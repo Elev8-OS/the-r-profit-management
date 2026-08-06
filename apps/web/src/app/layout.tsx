@@ -1,5 +1,6 @@
 import "./globals.css";
 import type { Metadata } from "next";
+import Link from "next/link";
 
 export const metadata: Metadata = {
   title: "The R — Profit Management",
@@ -9,7 +10,35 @@ export const metadata: Metadata = {
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="en">
-      <body className="min-h-screen bg-slate-50 text-slate-900">{children}</body>
+      <body className="min-h-screen bg-slate-50 text-slate-900">
+        <nav className="border-b border-slate-200 bg-white">
+          <div className="mx-auto flex max-w-6xl items-center justify-between px-6 py-3 text-sm">
+            <div className="flex gap-5">
+              <Link href="/" className="font-medium">
+                The R — Profit
+              </Link>
+              <Link href="/dashboard" className="text-slate-600 hover:text-slate-900">
+                Dashboard
+              </Link>
+              <Link href="/listings" className="text-slate-600 hover:text-slate-900">
+                Listings & Costs
+              </Link>
+              <Link href="/settings/rate-cards" className="text-slate-600 hover:text-slate-900">
+                Rate Cards
+              </Link>
+            </div>
+            <div className="flex gap-4">
+              <a href="/api/auth/signin" className="text-slate-600 hover:text-slate-900">
+                Sign in
+              </a>
+              <a href="/api/auth/signout" className="text-slate-600 hover:text-slate-900">
+                Sign out
+              </a>
+            </div>
+          </div>
+        </nav>
+        {children}
+      </body>
     </html>
   );
 }

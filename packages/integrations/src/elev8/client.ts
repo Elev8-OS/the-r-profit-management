@@ -1,15 +1,16 @@
 /**
  * Typed Elev8 Suite client (Phase 1 stub).
  *
- * BLOCKER (see architecture doc, Open Items #3): as of this writing there is
- * no confirmed general public REST/GraphQL API for Elev8 Suite — only PMS
- * integration guides (Beds24, Guesty). This client cannot be implemented for
- * real production polling until Elev8 Suite engineering provides either:
- *   (a) a service-to-service API key/endpoint, or
- *   (b) a read replica / data export.
- * Until then, do NOT call the agent-facing Elev8 Suite MCP tools from this
- * worker in production — they're proxied through a device bridge / session
- * context and are not designed for unattended scheduled polling.
+ * STATUS (2026-08-06): a service credential (ELEV8_API_KEY) has been provided
+ * and is set on the `worker-app` Railway service — but the base URL/endpoint
+ * and auth scheme (Bearer vs custom header; REST vs the MCP SSE endpoint at
+ * mcp.elev8-suite.com) are NOT yet confirmed. Do not implement real HTTP
+ * calls here until that's confirmed — get the exact base URL + auth header
+ * format from Elev8 Suite engineering, then set ELEV8_API_BASE_URL and wire
+ * the fetch calls below accordingly. Until then, do NOT call the agent-facing
+ * Elev8 Suite MCP tools from this worker in production — they're proxied
+ * through a device bridge / session context and are not designed for
+ * unattended scheduled polling.
  */
 export interface Elev8ListingOverview {
   listingId: string;
