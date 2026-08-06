@@ -9,6 +9,7 @@
     "migrate:deploy": "prisma migrate deploy",
     "db:push": "prisma db push",
     "seed": "tsx prisma/seed.ts",
+    "seed:listings": "tsx prisma/seedListings.ts",
     "studio": "prisma studio"
   },
   "prisma": {
