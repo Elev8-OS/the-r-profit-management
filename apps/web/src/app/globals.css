@@ -1,3 +1,21 @@
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+
+/* Elev8 Suite design tokens (see elev8-product-knowledge brand reference) */
+:root {
+  --color-background-primary: #ffffff;
+  --color-text-primary: #14181f;
+  --color-text-secondary: #6b7280;
+  --color-border-tertiary: #e5e7eb;
+  --border-radius-lg: 0.75rem;
+  --border-radius-md: 0.5rem;
+  --brand-yellow: #f6bb12;
+  --brand-active: #efb100;
+  --brand-gold: #c8a84b;
+}
+
+body {
+  background-color: #f7f7f8;
+  color: var(--color-text-primary);
+}

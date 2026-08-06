@@ -13,6 +13,6 @@ export function createQueue(name: string) {
   return new Queue(name, { connection });
 }
 
-export function createWorker(name: string, processor: Parameters<typeof Worker>[1]) {
+export function createWorker(name: string, processor: ConstructorParameters<typeof Worker>[1]) {
   return new Worker(name, processor, { connection });
 }

@@ -23,20 +23,20 @@ export default async function RateCardsPage() {
 
   return (
     <main className="mx-auto max-w-4xl px-6 py-12">
-      <h1 className="text-xl font-semibold">Cost methodology / rate cards</h1>
-      <p className="mt-2 text-slate-600">
+      <h1 className="text-xl font-semibold text-[#14181f]">Cost methodology / rate cards</h1>
+      <p className="mt-2 text-[#6b7280]">
         These values feed directly into the Operating Profit PAR and Fully-Loaded Profit PAR
         formulas (see docs/architecture.md). Tenant-wide defaults apply to every listing unless
         a listing-specific override exists below. There is no engineering default baked in —
         set the real numbers here.
       </p>
 
-      <div className="mt-6 divide-y divide-slate-200 rounded-lg border border-slate-200 bg-white">
+      <div className="mt-6 divide-y divide-[#e5e7eb] rounded-lg border border-[#e5e7eb] bg-white">
         {rateCards.length === 0 && (
-          <p className="p-4 text-sm text-slate-500">No rate cards set yet.</p>
+          <p className="p-4 text-sm text-[#6b7280]">No rate cards set yet.</p>
         )}
         {rateCards.map((rc) => (
-          <div key={rc.id} className="flex justify-between p-4 text-sm">
+          <div key={rc.id} className="flex justify-between p-4 text-sm text-[#14181f]">
             <span>
               {TYPE_LABELS[rc.type] ?? rc.type}
               {rc.internalListing ? ` — ${rc.internalListing.displayName}` : " — tenant default"}
@@ -49,18 +49,36 @@ export default async function RateCardsPage() {
         ))}
       </div>
 
-      <form action={addRateCard} className="mt-8 space-y-3 rounded-lg border border-slate-200 bg-white p-4">
-        <h2 className="font-medium">Add / update a rate card</h2>
+      <form
+        action={addRateCard}
+        className="mt-8 space-y-3 rounded-lg border border-[#e5e7eb] bg-white p-4"
+      >
+        <h2 className="font-medium text-[#14181f]">Add / update a rate card</h2>
         <div className="grid grid-cols-2 gap-3">
-          <select name="type" required className="rounded border border-slate-300 px-3 py-2 text-sm">
+          <select
+            name="type"
+            required
+            className="rounded-md border border-[#e5e7eb] px-3 py-2 text-sm focus:border-brand-active focus:outline-none"
+          >
             {Object.entries(TYPE_LABELS).map(([value, label]) => (
               <option key={value} value={value}>
                 {label}
               </option>
             ))}
           </select>
-          <input name="value" type="number" step="0.0001" min="0" placeholder="Value" required className="rounded border border-slate-300 px-3 py-2 text-sm" />
-          <select name="internalListingId" className="rounded border border-slate-300 px-3 py-2 text-sm">
+          <input
+            name="value"
+            type="number"
+            step="0.0001"
+            min="0"
+            placeholder="Value"
+            required
+            className="rounded-md border border-[#e5e7eb] px-3 py-2 text-sm focus:border-brand-active focus:outline-none"
+          />
+          <select
+            name="internalListingId"
+            className="rounded-md border border-[#e5e7eb] px-3 py-2 text-sm focus:border-brand-active focus:outline-none"
+          >
             <option value="">Tenant default (all listings)</option>
             {listings.map((l) => (
               <option key={l.id} value={l.id}>
@@ -68,9 +86,17 @@ export default async function RateCardsPage() {
               </option>
             ))}
           </select>
-          <input name="effectiveStart" type="date" required className="rounded border border-slate-300 px-3 py-2 text-sm" />
+          <input
+            name="effectiveStart"
+            type="date"
+            required
+            className="rounded-md border border-[#e5e7eb] px-3 py-2 text-sm focus:border-brand-active focus:outline-none"
+          />
         </div>
-        <button type="submit" className="rounded bg-slate-900 px-4 py-2 text-sm font-medium text-white hover:bg-slate-700">
+        <button
+          type="submit"
+          className="rounded-md bg-brand-yellow px-4 py-2 text-sm font-medium text-[#14181f] transition-colors hover:bg-brand-active"
+        >
           Save rate card
         </button>
       </form>
