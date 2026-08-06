@@ -1,0 +1,22 @@
+{
+  "name": "@the-r/worker",
+  "version": "0.1.0",
+  "private": true,
+  "main": "src/index.ts",
+  "scripts": {
+    "dev": "tsx watch src/index.ts",
+    "build": "tsc -p tsconfig.json",
+    "start": "node dist/index.js"
+  },
+  "dependencies": {
+    "@the-r/db": "workspace:*",
+    "@the-r/shared": "workspace:*",
+    "@the-r/integrations": "workspace:*",
+    "bullmq": "^5.12.0",
+    "ioredis": "^5.4.1"
+  },
+  "devDependencies": {
+    "tsx": "^4.16.2",
+    "typescript": "^5.5.4"
+  }
+}

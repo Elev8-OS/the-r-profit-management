@@ -1,0 +1,291 @@
+// The R — Profit & Revenue Management
+// Prisma schema v1 — see /docs plan for rationale.
+// Multi-tenant from day 1: every tenant-scoped model carries tenantId.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ---------- Tenancy & Auth ----------
+
+model Tenant {
+  id        String   @id @default(cuid())
+  name      String
+  slug      String   @unique
+  createdAt DateTime @default(now())
+
+  users            User[]
+  listings         InternalListing[]
+  costRateCards    CostRateCard[]
+  recommendations  Recommendation[]
+  syncRuns         SyncRun[]
+}
+
+model User {
+  id             String   @id @default(cuid())
+  tenantId       String
+  tenant         Tenant   @relation(fields: [tenantId], references: [id])
+  email          String   @unique
+  displayName    String?
+  entraObjectId  String?  @unique
+  entraTenantId  String?
+  role           UserRole @default(ADMIN)
+  createdAt      DateTime @default(now())
+
+  decidedRecommendations Recommendation[]      @relation("DecidedBy")
+  auditLogEntries        RecommendationAuditLog[]
+}
+
+enum UserRole {
+  ADMIN
+  MANAGER
+  VIEWER
+}
+
+// ---------- Listings & cross-system ID mapping ----------
+
+model InternalListing {
+  id             String   @id @default(cuid())
+  tenantId       String
+  tenant         Tenant   @relation(fields: [tenantId], references: [id])
+  displayName    String
+  brand          String?
+  country        String?
+  city           String?
+  currency       String?
+  capacity       Int?
+  status         String   @default("active")
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  externalRefs     ListingExternalRef[]
+  reservations     Reservation[]
+  dailyMetrics     DailyMetric[]
+  fixedCosts       CostFixedMonthly[]
+  cleaningCosts    CostCleaning[]
+  capexCosts       CostCapex[]
+  kpiSnapshots     KpiDailySnapshot[]
+  recommendations  Recommendation[]
+  rateCardOverride CostRateCard[]
+
+  @@index([tenantId])
+}
+
+enum ExternalSystem {
+  PRICELABS
+  MDV_AIRBNB
+  MDV_BOOKING
+  ELEV8
+}
+
+model ListingExternalRef {
+  id                String          @id @default(cuid())
+  internalListingId String
+  internalListing   InternalListing @relation(fields: [internalListingId], references: [id])
+  system            ExternalSystem
+  externalId        String
+  externalMeta      Json?
+  matchConfidence   String          @default("unmatched") // confirmed | heuristic | unmatched
+  createdAt         DateTime        @default(now())
+
+  @@unique([system, externalId])
+  @@index([internalListingId])
+}
+
+// ---------- Revenue facts ----------
+
+model Reservation {
+  id                  String          @id @default(cuid())
+  internalListingId   String
+  internalListing     InternalListing @relation(fields: [internalListingId], references: [id])
+  sourceSystem        ExternalSystem
+  externalReservationId String
+  channel             String?
+  checkIn             DateTime
+  checkOut            DateTime
+  grossRevenue        Decimal         @db.Decimal(12, 2)
+  currency            String
+  status              String
+  createdAt           DateTime        @default(now())
+
+  @@unique([sourceSystem, externalReservationId])
+  @@index([internalListingId])
+}
+
+model DailyMetric {
+  id                String          @id @default(cuid())
+  internalListingId String
+  internalListing   InternalListing @relation(fields: [internalListingId], references: [id])
+  date              DateTime        @db.Date
+  revenue           Decimal         @db.Decimal(12, 2) @default(0)
+  adr               Decimal?        @db.Decimal(12, 2)
+  isAvailable       Boolean         @default(true)
+  isOccupied        Boolean         @default(false)
+
+  @@unique([internalListingId, date])
+  @@index([internalListingId])
+}
+
+// ---------- Costs ----------
+
+model CostFixedMonthly {
+  id                String          @id @default(cuid())
+  internalListingId String
+  internalListing   InternalListing @relation(fields: [internalListingId], references: [id])
+  category          String // rent | mortgage | utilities | insurance | software | other
+  amount            Decimal         @db.Decimal(12, 2)
+  currency          String
+  effectiveStart    DateTime        @db.Date
+  effectiveEnd      DateTime?       @db.Date
+  notes             String?
+  createdAt         DateTime        @default(now())
+
+  @@index([internalListingId])
+}
+
+model CostRateCard {
+  id                 String           @id @default(cuid())
+  tenantId           String
+  tenant             Tenant           @relation(fields: [tenantId], references: [id])
+  internalListingId  String?          // null = tenant-wide default
+  internalListing    InternalListing? @relation(fields: [internalListingId], references: [id])
+  type               String // cleaning_hourly | cleaning_flat | management_fee_pct
+  value              Decimal          @db.Decimal(12, 4)
+  effectiveStart     DateTime         @db.Date
+  effectiveEnd       DateTime?        @db.Date
+
+  @@index([tenantId])
+  @@index([internalListingId])
+}
+
+model CostCleaning {
+  id                String          @id @default(cuid())
+  internalListingId String
+  internalListing   InternalListing @relation(fields: [internalListingId], references: [id])
+  date              DateTime        @db.Date
+  reservationId     String?
+  costAmount        Decimal         @db.Decimal(12, 2)
+  durationMinutes   Int?
+  source            String // elev8_auto | manual
+  createdAt         DateTime        @default(now())
+
+  @@index([internalListingId])
+}
+
+model CostCapex {
+  id                String          @id @default(cuid())
+  internalListingId String
+  internalListing   InternalListing @relation(fields: [internalListingId], references: [id])
+  date              DateTime        @db.Date
+  category          String // repair | damage | furniture | other
+  amount            Decimal         @db.Decimal(12, 2)
+  description       String?
+  createdAt         DateTime        @default(now())
+
+  @@index([internalListingId])
+}
+
+// ---------- KPIs ----------
+
+model KpiDailySnapshot {
+  id                     String          @id @default(cuid())
+  internalListingId      String
+  internalListing        InternalListing @relation(fields: [internalListingId], references: [id])
+  date                   DateTime        @db.Date
+  revenue                Decimal         @db.Decimal(12, 2)
+  fixedCostAllocated     Decimal         @db.Decimal(12, 2)
+  cleaningCost           Decimal         @db.Decimal(12, 2)
+  managementFee          Decimal         @db.Decimal(12, 2)
+  capexAllocated         Decimal         @db.Decimal(12, 2)
+  revpar                 Decimal         @db.Decimal(12, 2)
+  operatingProfitPar     Decimal         @db.Decimal(12, 2)
+  fullyLoadedProfitPar   Decimal         @db.Decimal(12, 2)
+  formulaVersion         String          @default("v1")
+  createdAt              DateTime        @default(now())
+
+  @@unique([internalListingId, date, formulaVersion])
+  @@index([internalListingId])
+}
+
+// ---------- Recommendations ----------
+
+enum RecommendationType {
+  PRICE_OVERRIDE
+  ACCEPT_NUDGE
+  REJECT_NUDGE
+  MIN_STAY_CHANGE
+  MDV_DISCOUNT_CHANGE
+  SYSTEM_CONFLICT
+}
+
+enum RecommendationStatus {
+  PENDING
+  APPROVED
+  SENT
+  REJECTED
+  EXPIRED
+  FAILED
+}
+
+model Recommendation {
+  id                String                @id @default(cuid())
+  tenantId          String
+  tenant            Tenant                @relation(fields: [tenantId], references: [id])
+  internalListingId String
+  internalListing   InternalListing       @relation(fields: [internalListingId], references: [id])
+  type              RecommendationType
+  dateRangeStart    DateTime?             @db.Date
+  dateRangeEnd      DateTime?             @db.Date
+  triggerSignal     Json
+  proposedAction    Json
+  rationaleText     String
+  status            RecommendationStatus  @default(PENDING)
+  targetSystem      ExternalSystem?
+  externalActionRef String?
+  decidedById       String?
+  decidedBy         User?                 @relation("DecidedBy", fields: [decidedById], references: [id])
+  decidedAt         DateTime?
+  createdAt         DateTime              @default(now())
+
+  auditLog          RecommendationAuditLog[]
+
+  @@index([tenantId])
+  @@index([internalListingId])
+}
+
+model RecommendationAuditLog {
+  id               String         @id @default(cuid())
+  recommendationId String
+  recommendation   Recommendation @relation(fields: [recommendationId], references: [id])
+  action           String // created | viewed | approved | rejected | sent | send_failed
+  actorUserId      String?
+  actorUser        User?          @relation(fields: [actorUserId], references: [id])
+  payloadSnapshot  Json?
+  createdAt        DateTime       @default(now())
+
+  @@index([recommendationId])
+}
+
+// ---------- Sync bookkeeping ----------
+
+model SyncRun {
+  id              String         @id @default(cuid())
+  tenantId        String
+  tenant          Tenant         @relation(fields: [tenantId], references: [id])
+  system          ExternalSystem
+  jobName         String
+  startedAt       DateTime       @default(now())
+  finishedAt      DateTime?
+  status          String        @default("running") // running | success | failed
+  recordsFetched  Int?
+  recordsUpserted Int?
+  errorMessage    String?
+  triggeredBy     String? // "schedule" | userId
+
+  @@index([tenantId])
+}

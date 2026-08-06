@@ -1,0 +1,19 @@
+# Microsoft Entra ID (Azure AD) SSO setup — manual steps
+
+This app has no Azure admin API access from the build environment, so this
+registration has to be done by hand in the Azure Portal by someone with admin
+rights on the elev8-suite.com Entra tenant (Reto — Founder & CTO).
+
+1. Go to https://portal.azure.com → **Microsoft Entra ID** → **App registrations** → **New registration**.
+2. Name: `The R - Profit Management` (or similar).
+3. Supported account types: **Accounts in this organizational directory only (elev8-suite.com only — Single tenant)** for Phase 1. This gets switched to multi-tenant only in Phase 4, when other companies are onboarded.
+4. Redirect URI: type **Web**, value `https://web-production-861bb.up.railway.app/api/auth/callback/azure-ad` (this is the real Railway domain already provisioned for the `web` service) — and add `http://localhost:3000/api/auth/callback/azure-ad` too for local dev.
+5. After creation, note down:
+   - **Application (client) ID** → `AZURE_AD_CLIENT_ID`
+   - **Directory (tenant) ID** → `AZURE_AD_TENANT_ID`
+6. Go to **Certificates & secrets** → **New client secret** → copy the value immediately (shown once) → `AZURE_AD_CLIENT_SECRET`.
+7. Go to **API permissions** → confirm `User.Read` (Microsoft Graph, delegated) is present — it's added by default and is sufficient for Phase 1 sign-in.
+8. Set `AZURE_AD_CLIENT_ID`, `AZURE_AD_CLIENT_SECRET`, and `AZURE_AD_TENANT_ID` as Railway environment variables on the `web` service (Railway project `the-r-profit-management`, service `web`) — `NEXTAUTH_URL` and `NEXTAUTH_SECRET` are already set.
+9. When a `staging` environment is added later, repeat this whole registration for a second app (staging has its own domain, so its own redirect URI).
+
+No further app-side code changes are needed once these are set; `apps/web/src/auth.ts` already reads all of them.
