@@ -33,6 +33,24 @@ async function main() {
 
   const syncQueue = createQueue(SYNC_QUEUE_NAME);
 
+  // TEMPORARY diagnostic: the RUN_SYNC_NOW smoke test has shown a clean boot
+  // with no further output (no job-dequeue log, no error/failed/stalled
+  // event) for 7+ minutes across two deploys. This dumps the queue's actual
+  // job counts/states directly from Redis so we can see whether the job is
+  // stuck in "wait" (worker isn't consuming) vs "active" (processor hung)
+  // vs already "completed"/"failed" silently. Remove once root-caused.
+  const startupCounts = await syncQueue.getJobCounts();
+  console.log("[worker][diag] queue job counts at startup:", JSON.stringify(startupCounts));
+  const existingJobs = await syncQueue.getJobs(["waiting", "active", "delayed", "failed", "completed"], 0, 20);
+  console.log(
+    "[worker][diag] existing jobs:",
+    JSON.stringify(
+      await Promise.all(
+        existingJobs.map(async (j) => ({ id: j.id, name: j.name, state: await j.getState() }))
+      )
+    )
+  );
+
   if (tenant) {
     if (!process.env.PRICELABS_API_KEY) {
       console.warn(
@@ -87,6 +105,20 @@ async function main() {
   });
 
   console.log(`[worker] started — listening on queue "${SYNC_QUEUE_NAME}"`);
+
+  // TEMPORARY diagnostic: re-check queue state a few times after startup to
+  // see whether counts actually move (job picked up) or stay frozen (worker
+  // isn't consuming at all). Remove once root-caused.
+  for (const delayMs of [10_000, 30_000, 60_000]) {
+    setTimeout(async () => {
+      try {
+        const counts = await syncQueue.getJobCounts();
+        console.log(`[worker][diag] queue job counts at +${delayMs}ms:`, JSON.stringify(counts));
+      } catch (err) {
+        console.error(`[worker][diag] getJobCounts failed at +${delayMs}ms`, err);
+      }
+    }, delayMs);
+  }
 }
 
 main().catch((err) => {
