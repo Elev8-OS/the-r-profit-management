@@ -11,13 +11,15 @@
     "seed": "tsx prisma/seed.ts",
     "seed:listings": "tsx prisma/seedListings.ts",
     "seed:mdv-refs": "tsx prisma/seedMdvRefs.ts",
+    "seed:opportunity-signals": "tsx prisma/seedOpportunitySignals.ts",
     "studio": "prisma studio"
   },
   "prisma": {
     "seed": "tsx prisma/seed.ts"
   },
   "dependencies": {
-    "@prisma/client": "^5.19.0"
+    "@prisma/client": "^5.19.0",
+    "@the-r/shared": "workspace:*"
   },
   "devDependencies": {
     "prisma": "^5.19.0",

@@ -63,15 +63,20 @@ model InternalListing {
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
 
-  externalRefs     ListingExternalRef[]
-  reservations     Reservation[]
-  dailyMetrics     DailyMetric[]
-  fixedCosts       CostFixedMonthly[]
-  cleaningCosts    CostCleaning[]
-  capexCosts       CostCapex[]
-  kpiSnapshots     KpiDailySnapshot[]
-  recommendations  Recommendation[]
-  rateCardOverride CostRateCard[]
+  externalRefs      ListingExternalRef[]
+  reservations      Reservation[]
+  dailyMetrics      DailyMetric[]
+  fixedCosts        CostFixedMonthly[]
+  cleaningCosts     CostCleaning[]
+  capexCosts        CostCapex[]
+  kpiSnapshots      KpiDailySnapshot[]
+  recommendations   Recommendation[]
+  rateCardOverride  CostRateCard[]
+  channelFunnels    ListingChannelFunnel[]
+  reviewScores      ListingReviewScore[]
+  priceLabsHealth   PriceLabsHealthSnapshot[]
+  priceLabsNudges   PriceLabsNudge[]
+  opportunityScores OpportunityScoreSnapshot[]
 
   @@index([tenantId])
 }
@@ -288,4 +293,100 @@ model SyncRun {
   triggeredBy     String? // "schedule" | userId
 
   @@index([tenantId])
+}
+
+// ---------- Opportunity Score — "what needs attention" ----------
+// FX rates, channel-funnel/review signals from MyDataValue, PriceLabs market-health
+// snapshots and pricing nudges, and the resulting per-listing Opportunity Score.
+// See packages/shared/src/kpi/computeOpportunityScore.ts for the scoring formula and
+// packages/db/prisma/seedOpportunitySignals.ts for how these get populated from the
+// one-time manual data captures in prisma/seedData/*.
+
+model FxRate {
+  id         String   @id @default(cuid())
+  date       DateTime @db.Date
+  currency   String   // "CHF" | "USD" | "EUR" | "IDR" ...
+  chfPerUnit Decimal  @db.Decimal(18, 8) // 1 unit of `currency` = chfPerUnit CHF. Reporting currency is CHF.
+  source     String   // e.g. "manual-seed-2026-08-07" now; a real FX API job later
+  createdAt  DateTime @default(now())
+
+  @@unique([date, currency])
+}
+
+model ListingChannelFunnel {
+  id                 String          @id @default(cuid())
+  internalListingId  String
+  internalListing    InternalListing @relation(fields: [internalListingId], references: [id])
+  system             ExternalSystem  // MDV_BOOKING | MDV_AIRBNB
+  periodEnd          DateTime        @db.Date // "data as of" date for this snapshot
+  searchViews        Int
+  propertyViews      Int
+  bookingConversions Int
+  searchToViewRate   Decimal?        @db.Decimal(10, 6)
+  viewToBookingRate  Decimal?        @db.Decimal(10, 6)
+  createdAt          DateTime        @default(now())
+
+  @@unique([internalListingId, system, periodEnd])
+  @@index([internalListingId])
+}
+
+model ListingReviewScore {
+  id                 String          @id @default(cuid())
+  internalListingId  String
+  internalListing    InternalListing @relation(fields: [internalListingId], references: [id])
+  system             ExternalSystem  // MDV_BOOKING | MDV_AIRBNB
+  reviewScore10      Decimal         @db.Decimal(4, 2) // normalized to a 0-10 scale (Airbnb's 0-5 * 2)
+  reviewScoreRaw     Decimal         @db.Decimal(4, 2) // as returned by the source
+  reviewCount        Int
+  asOf               DateTime        @db.Date
+  createdAt          DateTime        @default(now())
+
+  @@unique([internalListingId, system, asOf])
+  @@index([internalListingId])
+}
+
+model PriceLabsHealthSnapshot {
+  id                     String          @id @default(cuid())
+  internalListingId      String
+  internalListing        InternalListing @relation(fields: [internalListingId], references: [id])
+  statusColor            String          // Red | Yellow | Green | Blue
+  statusText             String
+  marketSection          Json
+  recommendationSection  Json
+  analyzedAt             DateTime
+  createdAt              DateTime        @default(now())
+
+  @@index([internalListingId])
+}
+
+model PriceLabsNudge {
+  id                 String          @id @default(cuid())
+  internalListingId  String
+  internalListing    InternalListing @relation(fields: [internalListingId], references: [id])
+  nudgeId            String          @unique
+  nudgeType          String
+  currentValue       Decimal         @db.Decimal(12, 2)
+  suggestedValue     Decimal         @db.Decimal(12, 2)
+  direction          String
+  reason             String
+  expiration         DateTime
+  status             String          @default("pending") // pending | accepted | dismissed | expired
+  createdAt          DateTime        @default(now())
+
+  @@index([internalListingId])
+}
+
+model OpportunityScoreSnapshot {
+  id                          String          @id @default(cuid())
+  internalListingId           String
+  internalListing             InternalListing @relation(fields: [internalListingId], references: [id])
+  date                        DateTime        @db.Date
+  score                       Int             // 0-100, higher = more urgent
+  estimatedMonthlyLeakageChf  Decimal?        @db.Decimal(12, 2)
+  drivers                     Json            // array of {category, severity (0-100), detail, actionSuggestion}
+  formulaVersion              String
+  createdAt                   DateTime        @default(now())
+
+  @@unique([internalListingId, date, formulaVersion])
+  @@index([date])
 }
