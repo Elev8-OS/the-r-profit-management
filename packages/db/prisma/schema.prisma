@@ -60,8 +60,14 @@ model InternalListing {
   currency       String?
   capacity       Int?
   status         String   @default("active")
-  createdAt      DateTime @default(now())
-  updatedAt      DateTime @updatedAt
+  // Free-text owner intent for this unit (e.g. "maximize occupancy in Q4",
+  // "protect margin, don't chase last-minute discounts") — fed into the
+  // AI_SUGGESTION generator alongside real signal data. Plain text, not
+  // structured; the generator does the interpretation.
+  goalNotes      String?   @db.Text
+  goalUpdatedAt  DateTime?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
 
   externalRefs      ListingExternalRef[]
   reservations      Reservation[]
@@ -226,6 +232,11 @@ enum RecommendationType {
   MIN_STAY_CHANGE
   MDV_DISCOUNT_CHANGE
   SYSTEM_CONFLICT
+  // Free-text, non-pushable suggestion generated from a listing's goalNotes
+  // + its latest real signal data (PriceLabs health, nudges, opportunity
+  // drivers). Informational only — approve/reject like any other
+  // recommendation, but there is no structured external action to push.
+  AI_SUGGESTION
 }
 
 enum RecommendationStatus {
@@ -384,7 +395,7 @@ model OpportunityScoreSnapshot {
   score                       Int             // 0-100, higher = more urgent
   estimatedMonthlyLeakageChf  Decimal?        @db.Decimal(12, 2)
   drivers                     Json            // array of {category, severity (0-100), detail, actionSuggestion}
-  formulaVersion              String
+  formulaVersion              String          @default("v1")
   createdAt                   DateTime        @default(now())
 
   @@unique([internalListingId, date, formulaVersion])

@@ -7,6 +7,22 @@
  * "Rachel Wyss", "Mile Ignjatic", "revtech17", "myDataValueBot") — those must
  * be filtered out. Set MDV_ALLOWED_ACCOUNT_NAMES=Reto Wyss (see .env.example)
  * and always construct this client with that value; never default to "all".
+ *
+ * API existence — CONFIRMED (2026-08-07): unlike Elev8, MyDataValue does
+ * have a real structured REST API — the MCP connector's `mdv_raw_get` tool
+ * documents live paths like `/api/v1/sync-jobs/{job_id}/`, `/api/v1/tags/`,
+ * and webhook endpoints, so this isn't a dead end the way Elev8's public API
+ * was. NOT yet confirmed: the exact base URL/auth header this app should use
+ * (the MCP connector's own auth is opaque to us), and whether write
+ * endpoints exist at all — every MDV MCP tool available today (get_pricing,
+ * get_promotions, get_demand, etc.) is read-only; there is no
+ * update_promotion/set_price equivalent, unlike PriceLabs which has both a
+ * documented Customer API and confirmed write endpoints. Before wiring this
+ * up for real: (1) ask MyDataValue support/account settings for a customer
+ * API key (mirrors how the PriceLabs key was obtained) and their API docs,
+ * (2) confirm the write endpoints exist and get their exact shape — do not
+ * guess at those the way the initial PriceLabs occupancy-field parsing was
+ * guessed and had to be fixed after a live run.
  */
 export interface MdvProperty {
   channel: "booking" | "airbnb";

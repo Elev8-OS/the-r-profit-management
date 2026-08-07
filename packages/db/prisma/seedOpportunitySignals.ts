@@ -37,6 +37,41 @@ import { FX_RATES_SEED, FX_RATES_SEED_DATE } from "./seedData/fxRatesSeed";
  */
 const prisma = new PrismaClient();
 
+/**
+ * Manually verified booking-level detail for specific ADR-outlier flags,
+ * looked up directly against Elev8's reservation data on 2026-08-07. Elev8's
+ * own confirmed partner API has no revenue/reservation endpoints (see
+ * architecture doc "Open Items"), so a live per-booking sync isn't possible
+ * yet for this deployed app — this is a one-time manual lookup, same pattern
+ * as every other seedData/*.json snapshot in this file, not a live job.
+ * Keyed by InternalListing.displayName. Extend as more outliers get checked;
+ * replace with a real live job once Elev8 reservation API access exists.
+ */
+const KNOWN_BOOKING_ENRICHMENTS: Record<
+  string,
+  {
+    reservationId: string;
+    checkIn: string;
+    checkOut: string;
+    nights: number;
+    guestName: string;
+    channel: string;
+    totalAmount: number;
+    currency: string;
+  }
+> = {
+  "The R Pererenan Mezzanine Studio + Plunge Pool": {
+    reservationId: "4b6dbbb3-f7fc-4491-8018-c345d5bcbd75",
+    checkIn: "2026-08-03",
+    checkOut: "2026-09-13",
+    nights: 41,
+    guestName: "Reto Wyss",
+    channel: "DIRECT",
+    totalAmount: 0.01,
+    currency: "CHF",
+  },
+};
+
 const SEED_DATA_DIR = path.join(__dirname, "seedData");
 
 function loadJson<T>(filename: string): T {
@@ -667,6 +702,14 @@ async function main() {
       (s) => s.median > 0 && s.min < s.median * 0.5
     );
     if (outlier) {
+      const enrichment = KNOWN_BOOKING_ENRICHMENTS[listing.displayName];
+      const triggerSignal = enrichment
+        ? { source: "elev8PerformanceSummaryAug2026", ...outlier, affectedBooking: enrichment }
+        : { source: "elev8PerformanceSummaryAug2026", ...outlier };
+      const rationaleText = enrichment
+        ? `Mindestens eine August-Buchung mit Tagespreis ${outlier.min.toFixed(2)} ${outlier.currency} liegt unter 50% des Medians (${outlier.median.toFixed(2)} ${outlier.currency}) dieses Listings. Betroffene Buchung direkt bei Elev8 geprüft (${enrichment.checkIn} → ${enrichment.checkOut}, Gast "${enrichment.guestName}", Kanal ${enrichment.channel}, ${enrichment.totalAmount} ${enrichment.currency} für ${enrichment.nights} Nächte) — sieht nach einer manuellen Blockierung/Direktbuchung aus, nicht nach einem Preisfehler. Bitte kurz bestätigen.`
+        : `Mindestens eine August-Buchung mit Tagespreis ${outlier.min.toFixed(2)} ${outlier.currency} liegt unter 50% des Medians (${outlier.median.toFixed(2)} ${outlier.currency}) dieses Listings — vermutlich ein Preis- oder Dateneingabefehler, keine bewusste Rabattentscheidung.`;
+
       const existingRec = await prisma.recommendation.findFirst({
         where: { tenantId: tenant.id, internalListingId, type: "PRICE_OVERRIDE", status: "PENDING" },
       });
@@ -676,14 +719,23 @@ async function main() {
             tenantId: tenant.id,
             internalListingId,
             type: "PRICE_OVERRIDE",
-            triggerSignal: { source: "elev8PerformanceSummaryAug2026", ...outlier },
+            triggerSignal,
             proposedAction: { note: "Buchung/Rate manuell prüfen und ggf. korrigieren" },
-            rationaleText: `Mindestens eine August-Buchung mit Tagespreis ${outlier.min.toFixed(2)} ${outlier.currency} liegt unter 50% des Medians (${outlier.median.toFixed(2)} ${outlier.currency}) dieses Listings — vermutlich ein Preis- oder Dateneingabefehler, keine bewusste Rabattentscheidung.`,
+            rationaleText,
             status: "PENDING",
             targetSystem: "ELEV8",
           },
         });
         recommendationsCreated++;
+      } else if (enrichment) {
+        // Refresh with the manually-verified booking enrichment even though
+        // the recommendation already exists from an earlier deploy — this is
+        // the one case where re-seeding should update, not skip, a pending
+        // row (see KNOWN_BOOKING_ENRICHMENTS doc comment).
+        await prisma.recommendation.update({
+          where: { id: existingRec.id },
+          data: { triggerSignal, rationaleText },
+        });
       }
     }
   }
