@@ -19,7 +19,8 @@
   },
   "dependencies": {
     "@prisma/client": "^5.19.0",
-    "@the-r/shared": "workspace:*"
+    "@the-r/shared": "workspace:*",
+    "@the-r/integrations": "workspace:*"
   },
   "devDependencies": {
     "prisma": "^5.19.0",

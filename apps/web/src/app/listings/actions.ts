@@ -294,9 +294,12 @@ const STRUCTURED_SUGGESTION_SCHEMA = {
  * StructuredSuggestion — summary + bulletable signals + 0-3 concrete
  * per-tool actions. Only tool=PRICELABS actions are actually pushable today
  * (see pushAiSuggestionAction in ../recommendations/actions.ts) — MDV writes
- * are not implemented yet (no MDV_API_KEY, no confirmed write endpoints, see
- * packages/integrations/src/mdv/client.ts), so MDV_* actions are shown as
- * informational-only in the dashboard.
+ * are not wired up yet. OAuth2 write credentials are now confirmed and the
+ * token-rotation pipeline exists (MdvTokenManager / PrismaMdvTokenStore),
+ * but MDV's actual write-endpoint request/response shapes are still
+ * unconfirmed (see packages/integrations/src/mdv/client.ts), so MDV_*
+ * actions are shown as informational-only in the dashboard until that's
+ * filled in.
  *
  * Requires ANTHROPIC_API_KEY — a real Anthropic API key from
  * console.anthropic.com, a separate credential from anything else in this

@@ -25,6 +25,7 @@ model Tenant {
   recommendations  Recommendation[]
   syncRuns         SyncRun[]
   portfolioContext PortfolioContextSnapshot?
+  mdvOAuthCredential MdvOAuthCredential?
 }
 
 model User {
@@ -417,9 +418,41 @@ model OpportunityScoreSnapshot {
   score                       Int             // 0-100, higher = more urgent
   estimatedMonthlyLeakageChf  Decimal?        @db.Decimal(12, 2)
   drivers                     Json            // array of {category, severity (0-100), detail, actionSuggestion}
-  formulaVersion              String
+  formulaVersion              String          @default("v1")
   createdAt                   DateTime        @default(now())
 
   @@unique([internalListingId, date, formulaVersion])
   @@index([date])
+}
+
+// ---------- MyDataValue OAuth2 write access ----------
+// Confirmed 2026-08-07: MyDataValue granted write access via a genuine
+// customer OAuth2 credential (client_id/client_secret + refresh_token),
+// separate from the read-only MDV MCP connector used during planning. Per
+// MDV support's explicit instructions, EVERY token exchange returns a new
+// access_token AND a new refresh_token, immediately invalidating the old
+// refresh_token — reusing an old one is treated as a stolen-token event and
+// shuts down access entirely (recoverable only via MDV support re-issuance).
+// A static env var can't hold a value that rotates on every use, so the
+// current refresh_token (plus a cached access_token) lives here instead,
+// one row per tenant. `version` is an optimistic-concurrency guard so two
+// processes (apps/web and apps/worker) can't both refresh the same
+// refresh_token at once and invalidate each other — see
+// packages/integrations/src/mdv/tokenManager.ts (MdvTokenManager) and
+// packages/db/src/mdvTokenStore.ts (PrismaMdvTokenStore) for the claim/CAS
+// logic that uses this field. Never seed/update this table's refreshToken
+// or accessToken columns with anything other than what MDV's token endpoint
+// itself returns — no guessing, no hardcoding besides the one-time initial
+// refresh_token from MDV support (kept in the MDV_INITIAL_REFRESH_TOKEN env
+// var, used only to bootstrap the very first row for a tenant).
+model MdvOAuthCredential {
+  id                   String    @id @default(cuid())
+  tenantId             String    @unique
+  tenant               Tenant    @relation(fields: [tenantId], references: [id])
+  refreshToken         String    @db.Text
+  accessToken          String?   @db.Text
+  accessTokenExpiresAt DateTime?
+  version              Int       @default(0)
+  createdAt            DateTime  @default(now())
+  updatedAt            DateTime  @updatedAt
 }
