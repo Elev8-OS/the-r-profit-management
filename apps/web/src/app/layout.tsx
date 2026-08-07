@@ -34,6 +34,9 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
               <Link href="/listings" className="text-[#6b7280] transition-colors hover:text-[#14181f]">
                 Listings & Costs
               </Link>
+              <Link href="/recommendations" className="text-[#6b7280] transition-colors hover:text-[#14181f]">
+                Empfehlungen
+              </Link>
               <Link href="/settings/rate-cards" className="text-[#6b7280] transition-colors hover:text-[#14181f]">
                 Rate Cards
               </Link>
