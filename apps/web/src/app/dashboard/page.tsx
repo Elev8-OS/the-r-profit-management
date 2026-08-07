@@ -1,9 +1,42 @@
 import Link from "next/link";
 import { prisma } from "@the-r/db";
 import { requireSession } from "@/lib/auth-helpers";
-import { pushAcceptNudge, pushPriceOverride, rejectRecommendation } from "../recommendations/actions";
+import {
+  pushAcceptNudge,
+  pushPriceOverride,
+  pushAiSuggestionAction,
+  pushAllAiSuggestionActions,
+  rejectRecommendation,
+} from "../recommendations/actions";
 import { updateListingGoal, generateAiSuggestion } from "../listings/actions";
 import { SubmitButton } from "@/components/SubmitButton";
+import { ConfirmActionButton } from "@/components/ConfirmActionButton";
+
+const TOOL_LABELS: Record<string, string> = {
+  PRICELABS: "PriceLabs",
+  MDV_AIRBNB: "MyDataValue (Airbnb)",
+  MDV_BOOKING: "MyDataValue (Booking.com)",
+  OTHER: "Sonstiges",
+};
+
+type SuggestionAction = {
+  tool: string;
+  actionType: string;
+  title: string;
+  description: string;
+  expectedImpact: string;
+  dependencyNote: string;
+  index: number;
+  automatable: boolean;
+  status: "PENDING" | "SENT" | "FAILED";
+};
+
+type StructuredSuggestion = {
+  summary: string;
+  signals: Array<{ source: string; text: string }>;
+  actions: SuggestionAction[];
+  confidenceNote: string;
+};
 
 const ATTENTION_THRESHOLD = 40;
 
@@ -56,7 +89,11 @@ function describeDecision(
     const { date, price } = latestAuditPayload as { date?: string; price?: number };
     if (date && price != null) return `${date} → ${price} (Override)`;
   }
-  if (rec.type === "AI_SUGGESTION") return "Freitext-Vorschlag";
+  if (rec.type === "AI_SUGGESTION") {
+    const summary = typeof action.summary === "string" ? action.summary : null;
+    if (summary) return summary.length > 80 ? `${summary.slice(0, 77)}…` : summary;
+    return "Freitext-Vorschlag";
+  }
   return "—";
 }
 
@@ -121,6 +158,95 @@ export default async function DashboardPage() {
   function renderRecommendationCard(rec: (typeof pendingRecs)[number]) {
     const trigger = (rec.triggerSignal as Record<string, unknown>) ?? {};
     const affectedBooking = trigger.affectedBooking as AffectedBooking | undefined;
+
+    const structured =
+      rec.type === "AI_SUGGESTION" ? (rec.proposedAction as unknown as StructuredSuggestion | null) : null;
+    const hasStructuredSuggestion = structured != null && Array.isArray(structured.actions);
+
+    if (hasStructuredSuggestion) {
+      const pendingAutomatable = structured!.actions.filter((a) => a.automatable && a.status === "PENDING");
+
+      return (
+        <div key={rec.id} className="mt-3 rounded-lg border border-[#e5e7eb] bg-[#fffdf7] p-4">
+          <span className="inline-block rounded-md bg-brand-gold/20 px-2 py-0.5 text-xs font-medium text-[#8a6d1f]">
+            {TYPE_LABELS[rec.type] ?? rec.type}
+          </span>
+          <p className="mt-2 text-sm text-[#14181f]">{structured!.summary}</p>
+
+          {structured!.signals?.length > 0 && (
+            <ul className="mt-2 list-disc space-y-1 pl-5 text-xs text-[#6b7280]">
+              {structured!.signals.map((s, i) => (
+                <li key={i}>
+                  <span className="font-medium text-[#14181f]">{s.source}:</span> {s.text}
+                </li>
+              ))}
+            </ul>
+          )}
+
+          {structured!.actions.map((a) => (
+            <div key={a.index} className="mt-3 rounded-md border border-[#e5e7eb] bg-white p-3">
+              <div className="flex items-start justify-between gap-2">
+                <div>
+                  <div className="text-sm font-medium text-[#14181f]">{a.title}</div>
+                  <p className="mt-1 text-xs text-[#6b7280]">{a.description}</p>
+                  <p className="mt-1 text-xs text-[#6b7280]">Erwartete Wirkung: {a.expectedImpact}</p>
+                </div>
+                <span className="shrink-0 rounded-md bg-[#f7f7f8] px-2 py-0.5 text-[10px] font-medium text-[#6b7280]">
+                  {TOOL_LABELS[a.tool] ?? a.tool}
+                </span>
+              </div>
+              <div className="mt-2">
+                {a.automatable ? (
+                  a.status === "SENT" ? (
+                    <span className="text-xs font-medium text-[#8a6d1f]">Übernommen ✓</span>
+                  ) : (
+                    <ConfirmActionButton
+                      run={pushAiSuggestionAction.bind(null, rec.id, a.index)}
+                      label={a.status === "FAILED" ? "Erneut versuchen" : `Bei ${TOOL_LABELS[a.tool] ?? a.tool} pushen`}
+                      pendingLabel="Wird gepusht…"
+                      dependencyNote={a.dependencyNote}
+                      className={
+                        a.status === "FAILED"
+                          ? "rounded-md border border-red-300 bg-red-50 px-3 py-1.5 text-xs font-medium text-red-800 hover:bg-red-100"
+                          : "rounded-md bg-brand-yellow px-3 py-1.5 text-xs font-medium text-[#14181f] hover:bg-brand-active"
+                      }
+                    />
+                  )
+                ) : (
+                  <span className="text-xs text-[#6b7280]">
+                    Noch nicht automatisierbar ({TOOL_LABELS[a.tool] ?? a.tool}) — manuell umsetzen.
+                  </span>
+                )}
+              </div>
+            </div>
+          ))}
+
+          {structured!.confidenceNote && (
+            <p className="mt-2 text-xs italic text-[#9ca3af]">Konfidenz: {structured!.confidenceNote}</p>
+          )}
+
+          <div className="mt-3 flex flex-wrap items-center gap-3">
+            {pendingAutomatable.length > 1 && (
+              <ConfirmActionButton
+                run={pushAllAiSuggestionActions.bind(null, rec.id)}
+                label={`Alle ${pendingAutomatable.length} automatisierbaren Aktionen pushen`}
+                pendingLabel="Wird gepusht…"
+                dependencyNote="Führt alle offenen, automatisierbaren Aktionen dieses Vorschlags nacheinander aus — nicht nur eine davon."
+                className="rounded-md border border-brand-gold bg-white px-3 py-1.5 text-xs font-medium text-[#14181f] hover:bg-brand-gold/10"
+              />
+            )}
+            <form action={rejectRecommendation.bind(null, rec.id)}>
+              <button
+                type="submit"
+                className="rounded-md border border-[#e5e7eb] px-4 py-2 text-sm font-medium text-[#6b7280] transition-colors hover:bg-[#f7f7f8]"
+              >
+                Ablehnen
+              </button>
+            </form>
+          </div>
+        </div>
+      );
+    }
 
     return (
       <div key={rec.id} className="mt-3 rounded-lg border border-[#e5e7eb] bg-[#fffdf7] p-4">

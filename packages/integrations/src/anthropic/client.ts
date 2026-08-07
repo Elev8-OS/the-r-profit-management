@@ -96,4 +96,66 @@ export class AnthropicClient {
     }
     return textBlocks.join("\n\n").trim();
   }
+
+  /**
+   * Structured-output generation via a forced tool call. Anthropic has no
+   * "response_format: json_schema" mode (unlike some other vendors) — the
+   * reliable way to get schema-shaped JSON back is to define one tool whose
+   * input_schema IS the desired shape, then force tool_choice to that tool.
+   * The model's entire "response" becomes that one tool_use block's `input`,
+   * which is already parsed JSON (no string-parsing/repair needed).
+   *
+   * Deliberately does NOT accept enableWebSearch: forcing tool_choice to a
+   * specific custom tool makes the model call it immediately, so it cannot
+   * also decide to run a web search first in the same request. Callers that
+   * need both research and structured output should do a first free-form
+   * generateText() call with web search enabled, then feed that result into
+   * a second generateJson() call (no search tool) to structure it — see
+   * generateAiSuggestion in apps/web for this two-step pattern.
+   */
+  async generateJson<T = unknown>(
+    prompt: string,
+    schema: Record<string, unknown>,
+    opts: { system?: string; maxTokens?: number; toolName?: string; toolDescription?: string } = {}
+  ): Promise<T> {
+    const { system, maxTokens = 1500, toolName = "emit_structured_output", toolDescription = "Emit the result in the required structured shape." } = opts;
+
+    const body: Record<string, unknown> = {
+      model: this.model,
+      max_tokens: maxTokens,
+      messages: [{ role: "user", content: prompt }],
+      tools: [{ name: toolName, description: toolDescription, input_schema: schema }],
+      tool_choice: { type: "tool", name: toolName },
+    };
+    if (system) body.system = system;
+
+    const res = await fetch(`${this.baseUrl}/v1/messages`, {
+      method: "POST",
+      headers: {
+        "x-api-key": this.apiKey,
+        "anthropic-version": "2023-06-01",
+        "content-type": "application/json",
+      },
+      body: JSON.stringify(body),
+    });
+
+    if (!res.ok) {
+      let responseBody: unknown = null;
+      try {
+        responseBody = await res.json();
+      } catch {
+        // ignore
+      }
+      throw new AnthropicApiError(`Anthropic API error ${res.status}`, res.status, responseBody);
+    }
+
+    const data = (await res.json()) as {
+      content?: Array<{ type: string; input?: unknown; name?: string }>;
+    };
+    const toolUse = (data.content ?? []).find((b) => b.type === "tool_use" && b.name === toolName);
+    if (!toolUse || typeof toolUse.input === "undefined") {
+      throw new AnthropicApiError("Anthropic response had no tool_use block for the forced tool", 200, data);
+    }
+    return toolUse.input as T;
+  }
 }
