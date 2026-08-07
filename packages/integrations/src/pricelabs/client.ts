@@ -259,6 +259,22 @@ function numOrNull(v: unknown): number | null {
   return Number.isFinite(n) ? n : null;
 }
 
+/**
+ * PriceLabs returns occupancy_next_N / market_occupancy_next_N as strings
+ * like "47 %" (confirmed against real API output 2026-08-07), not numbers —
+ * plain Number() on that string is NaN. This strips the "%" and parses the
+ * remaining figure as a plain 0-100 percentage.
+ */
+function percentOrNull(v: unknown): number | null {
+  if (v === null || v === undefined) return null;
+  if (typeof v === "number") return Number.isFinite(v) ? v : null;
+  if (typeof v !== "string") return null;
+  const trimmed = v.trim();
+  if (trimmed === "" || trimmed.toLowerCase() === "unavailable") return null;
+  const n = Number(trimmed.replace("%", "").trim());
+  return Number.isFinite(n) ? n : null;
+}
+
 function mapListing(r: Record<string, unknown>): PriceLabsListing {
   const min = r.min as Record<string, unknown> | number | null | undefined;
   const max = r.max as Record<string, unknown> | number | null | undefined;
@@ -271,14 +287,14 @@ function mapListing(r: Record<string, unknown>): PriceLabsListing {
     min: numOrNull(typeof min === "object" && min !== null ? (min as Record<string, unknown>).price : min),
     max: numOrNull(typeof max === "object" && max !== null ? (max as Record<string, unknown>).price : max),
     recommendedBasePrice: numOrNull(r.recommended_base_price),
-    occupancyNext7: numOrNull(r.occupancy_next_7),
-    marketOccupancyNext7: numOrNull(r.market_occupancy_next_7),
-    occupancyNext30: numOrNull(r.occupancy_next_30),
-    marketOccupancyNext30: numOrNull(r.market_occupancy_next_30),
-    occupancyNext60: numOrNull(r.occupancy_next_60),
-    marketOccupancyNext60: numOrNull(r.market_occupancy_next_60),
-    occupancyNext90: numOrNull(r.occupancy_next_90),
-    marketOccupancyNext90: numOrNull(r.market_occupancy_next_90),
+    occupancyNext7: percentOrNull(r.occupancy_next_7),
+    marketOccupancyNext7: percentOrNull(r.market_occupancy_next_7),
+    occupancyNext30: percentOrNull(r.occupancy_next_30),
+    marketOccupancyNext30: percentOrNull(r.market_occupancy_next_30),
+    occupancyNext60: percentOrNull(r.occupancy_next_60),
+    marketOccupancyNext60: percentOrNull(r.market_occupancy_next_60),
+    occupancyNext90: percentOrNull(r.occupancy_next_90),
+    marketOccupancyNext90: percentOrNull(r.market_occupancy_next_90),
     revenuePast7: numOrNull(r.revenue_past_7),
     lastRefreshedAt: (r.last_refreshed_at as string) ?? null,
     raw: r,
