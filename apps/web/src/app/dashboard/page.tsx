@@ -3,6 +3,7 @@ import { prisma } from "@the-r/db";
 import { requireSession } from "@/lib/auth-helpers";
 import { pushAcceptNudge, pushPriceOverride, rejectRecommendation } from "../recommendations/actions";
 import { updateListingGoal, generateAiSuggestion } from "../listings/actions";
+import { SubmitButton } from "@/components/SubmitButton";
 
 const ATTENTION_THRESHOLD = 40;
 
@@ -283,12 +284,12 @@ export default async function DashboardPage() {
           </form>
           {aiSuggestionsEnabled ? (
             <form action={generateAiSuggestion.bind(null, listing.id)} className="mt-2">
-              <button
-                type="submit"
-                className="rounded-md bg-brand-yellow px-3 py-1.5 text-xs font-medium text-[#14181f] hover:bg-brand-active"
+              <SubmitButton
+                pendingLabel="Wird generiert… (bis zu 30s, inkl. Websuche)"
+                className="rounded-md bg-brand-yellow px-3 py-1.5 text-xs font-medium text-[#14181f] hover:bg-brand-active disabled:cursor-wait disabled:opacity-60"
               >
                 Neuen KI-Vorschlag generieren
-              </button>
+              </SubmitButton>
               <span className="ml-2 text-xs text-[#6b7280]">Nutzt das gespeicherte Ziel + aktuelle Daten.</span>
             </form>
           ) : (
