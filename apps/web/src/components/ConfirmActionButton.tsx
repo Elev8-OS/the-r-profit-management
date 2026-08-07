@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useEffect, useState, useTransition } from "react";
 
 /**
  * Button for pushing one AI-suggested action (or all of them at once) to an
@@ -33,6 +33,21 @@ export function ConfirmActionButton({
   const [open, setOpen] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
+  const [elapsedSeconds, setElapsedSeconds] = useState(0);
+
+  // A pure spinner + static label gives no proof of life on a slow push —
+  // real PriceLabs pushes have been observed taking 25-80+ seconds
+  // (especially "push all" running several external calls one after
+  // another), and that silence reads as "frozen" even though it's working.
+  // A visibly ticking counter is unmistakable evidence it's still going.
+  useEffect(() => {
+    if (!isPending) {
+      setElapsedSeconds(0);
+      return;
+    }
+    const interval = setInterval(() => setElapsedSeconds((s) => s + 1), 1000);
+    return () => clearInterval(interval);
+  }, [isPending]);
 
   function confirm() {
     setError(null);
@@ -55,7 +70,7 @@ export function ConfirmActionButton({
               aria-hidden
               className="inline-block h-3 w-3 animate-spin rounded-full border-2 border-current border-t-transparent"
             />
-            {pendingLabel}
+            {pendingLabel} ({elapsedSeconds}s)
           </span>
         ) : (
           label
