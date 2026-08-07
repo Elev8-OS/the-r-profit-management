@@ -173,7 +173,7 @@ export default async function DashboardPage() {
           </span>
           <p className="mt-2 text-sm text-[#14181f]">{structured!.summary}</p>
 
-          {structured!.signals?.length > 0 && (
+          {Array.isArray(structured!.signals) && structured!.signals.length > 0 && (
             <ul className="mt-2 list-disc space-y-1 pl-5 text-xs text-[#6b7280]">
               {structured!.signals.map((s, i) => (
                 <li key={i}>

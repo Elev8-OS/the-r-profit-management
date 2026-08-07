@@ -172,6 +172,53 @@ interface StructuredSuggestion {
   confidenceNote: string;
 }
 
+/**
+ * Anthropic's forced tool_choice makes the model emit input matching the
+ * JSON schema in the common case, but the schema is guidance, not hard
+ * validation — nothing stops the model from returning e.g. `signals` as a
+ * single string instead of an array. That happened in production on
+ * 2026-08-07 (digest 1590599801: "a.signals.map is not a function", crashing
+ * the whole dashboard render for the listing that suggestion belonged to).
+ * Normalize defensively here, before this is ever persisted, rather than
+ * trusting the shape all the way to the React render.
+ */
+function normalizeStructuredSuggestion(raw: unknown): StructuredSuggestion {
+  const obj = (raw && typeof raw === "object" ? raw : {}) as Record<string, unknown>;
+
+  const signals = Array.isArray(obj.signals)
+    ? obj.signals
+        .filter((s): s is Record<string, unknown> => s != null && typeof s === "object")
+        .map((s) => ({ source: String(s.source ?? "unbekannt"), text: String(s.text ?? "") }))
+    : [];
+
+  const actions = Array.isArray(obj.actions)
+    ? obj.actions
+        .filter((a): a is Record<string, unknown> => a != null && typeof a === "object")
+        .map((a) => ({
+          tool: (["PRICELABS", "MDV_AIRBNB", "MDV_BOOKING", "OTHER"].includes(String(a.tool))
+            ? String(a.tool)
+            : "OTHER") as StructuredSuggestionAction["tool"],
+          actionType: (["BASE_PRICE_UPDATE", "DATE_OVERRIDE", "MDV_DISCOUNT_CHANGE", "MIN_STAY_CHANGE", "OTHER"].includes(
+            String(a.actionType)
+          )
+            ? String(a.actionType)
+            : "OTHER") as StructuredSuggestionAction["actionType"],
+          title: String(a.title ?? "Vorgeschlagene Aktion"),
+          description: String(a.description ?? ""),
+          params: a.params && typeof a.params === "object" ? (a.params as Record<string, unknown>) : {},
+          expectedImpact: String(a.expectedImpact ?? ""),
+          dependencyNote: String(a.dependencyNote ?? ""),
+        }))
+    : [];
+
+  return {
+    summary: typeof obj.summary === "string" && obj.summary.trim() ? obj.summary : "Kein zusammenfassender Text verfügbar.",
+    signals,
+    actions,
+    confidenceNote: typeof obj.confidenceNote === "string" ? obj.confidenceNote : "",
+  };
+}
+
 const STRUCTURED_SUGGESTION_SCHEMA = {
   type: "object",
   properties: {
@@ -377,14 +424,15 @@ export async function generateAiSuggestion(listingId: string): Promise<void> {
     ...contextLines,
   ].join("\n");
 
-  const structured = await client.generateJson<StructuredSuggestion>(structuringPrompt, STRUCTURED_SUGGESTION_SCHEMA, {
+  const structuredRaw = await client.generateJson<unknown>(structuringPrompt, STRUCTURED_SUGGESTION_SCHEMA, {
     system: STRUCTURING_SYSTEM_PROMPT,
     maxTokens: 1500,
     toolName: "emit_suggestion",
     toolDescription: "Emit the structured revenue-management suggestion for this listing.",
   });
+  const structured = normalizeStructuredSuggestion(structuredRaw);
 
-  const actionsWithMeta = (structured.actions ?? []).map((a, index) => ({
+  const actionsWithMeta = structured.actions.map((a, index) => ({
     ...a,
     index,
     automatable: a.tool === "PRICELABS",
