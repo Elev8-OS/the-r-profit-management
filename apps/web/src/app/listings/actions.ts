@@ -3,7 +3,7 @@
 import { prisma } from "@the-r/db";
 import { revalidatePath } from "next/cache";
 import { requireSession } from "@/lib/auth-helpers";
-import { AnthropicClient } from "@the-r/integrations";
+import { AnthropicClient, PriceLabsClient } from "@the-r/integrations";
 
 export async function addListing(formData: FormData) {
   const { tenantId } = await requireSession();
@@ -147,7 +147,9 @@ ${LANGUAGE_RULE}`;
  */
 const STRUCTURING_SYSTEM_PROMPT = `Du strukturierst eine bereits erstellte Revenue-Management-Analyse in ein festes JSON-Schema für ein Dashboard. Gib ausschließlich über das bereitgestellte Tool strukturierte Daten zurück.
 
-Für jede Aktion mit tool=PRICELABS: verwende AUSSCHLIESSLICH die exakten Zahlen aus dem bereitgestellten Rohdaten-Kontext (z.B. den echten Wert von "Offene PriceLabs-Preisempfehlung" für eine BASE_PRICE_UPDATE-Aktion) — erfinde oder runde keine Zahlen aus der Analyse-Prosa. Wenn eine sinnvolle Aktion keine ausreichende Zahlengrundlage in den Rohdaten hat, ordne sie stattdessen als tool=MDV_AIRBNB/MDV_BOOKING/OTHER ein (nicht automatisch pushbar) oder lass sie weg — täusche keine PriceLabs-Aktion vor, die nicht wirklich ausführbar ist.
+Für jede Aktion mit tool=PRICELABS: verwende AUSSCHLIESSLICH die exakten Zahlen aus dem bereitgestellten Rohdaten-Kontext — das ist entweder die "Offene PriceLabs-Preisempfehlung" ODER (häufiger) die live abgerufene "Aktuelle PriceLabs-Konfiguration" bzw. die "Tagespreise/Mindestaufenthalt"-Liste der nächsten 14 Tage. Erfinde oder runde keine Zahlen aus der Analyse-Prosa. Preis UND Mindestaufenthalt (min_stay) werden BEIDE über PriceLabs gepusht (nicht über MyDataValue) — verwende für jede konkrete, datumsbezogene Preis- oder Mindestaufenthalt-Änderung IMMER actionType=DATE_OVERRIDE mit params={date, price, minStay} (minStay optional, nur setzen wenn sich der Mindestaufenthalt ändern soll); nutze actionType=BASE_PRICE_UPDATE nur für eine pauschale Basispreis-Änderung ohne Datumsbezug. Setze niemals actionType=MIN_STAY_CHANGE für tool=PRICELABS — das würde einen Push-Button erzeugen, der beim Klick fehlschlägt, weil dieser Aktionstyp für PriceLabs nicht ausgeführt werden kann.
+
+Wenn eine sinnvolle Aktion keine ausreichende Zahlengrundlage in den Rohdaten hat, ordne sie stattdessen als tool=MDV_AIRBNB/MDV_BOOKING/OTHER ein (nicht automatisch pushbar) oder lass sie weg — täusche keine PriceLabs-Aktion vor, die nicht wirklich ausführbar ist.
 
 Setze dependencyNote bei jeder Aktion explizit: ob sie unabhängig von den anderen vorgeschlagenen Aktionen sinnvoll ist, oder nur in Kombination mit einer/mehreren anderen (dann welche/r).
 
@@ -335,29 +337,78 @@ export async function generateAiSuggestion(listingId: string): Promise<void> {
     });
   }
 
-  const [latestSnapshot, health, pendingNudge, channelFunnels, reviewScores, portfolioContext] = await Promise.all([
-    prisma.opportunityScoreSnapshot.findFirst({
-      where: { internalListingId: listingId },
-      orderBy: { date: "desc" },
-    }),
-    prisma.priceLabsHealthSnapshot.findFirst({
-      where: { internalListingId: listingId },
-      orderBy: { analyzedAt: "desc" },
-    }),
-    prisma.priceLabsNudge.findFirst({
-      where: { internalListingId: listingId, status: "pending" },
-      orderBy: { createdAt: "desc" },
-    }),
-    prisma.listingChannelFunnel.findMany({
-      where: { internalListingId: listingId },
-      orderBy: { periodEnd: "desc" },
-    }),
-    prisma.listingReviewScore.findMany({
-      where: { internalListingId: listingId },
-      orderBy: { asOf: "desc" },
-    }),
-    prisma.portfolioContextSnapshot.findUnique({ where: { tenantId } }),
-  ]);
+  const [latestSnapshot, health, pendingNudge, channelFunnels, reviewScores, portfolioContext, priceLabsRef] =
+    await Promise.all([
+      prisma.opportunityScoreSnapshot.findFirst({
+        where: { internalListingId: listingId },
+        orderBy: { date: "desc" },
+      }),
+      prisma.priceLabsHealthSnapshot.findFirst({
+        where: { internalListingId: listingId },
+        orderBy: { analyzedAt: "desc" },
+      }),
+      prisma.priceLabsNudge.findFirst({
+        where: { internalListingId: listingId, status: "pending" },
+        orderBy: { createdAt: "desc" },
+      }),
+      prisma.listingChannelFunnel.findMany({
+        where: { internalListingId: listingId },
+        orderBy: { periodEnd: "desc" },
+      }),
+      prisma.listingReviewScore.findMany({
+        where: { internalListingId: listingId },
+        orderBy: { asOf: "desc" },
+      }),
+      prisma.portfolioContextSnapshot.findUnique({ where: { tenantId } }),
+      prisma.listingExternalRef.findFirst({ where: { internalListingId: listingId, system: "PRICELABS" } }),
+    ]);
+
+  // Live PriceLabs pull (current base/min/max + next-14-days price/min-stay),
+  // done fresh on every generation rather than relying only on the
+  // pre-synced "implied nudge" table — a listing can genuinely need a price
+  // or min-stay change even when PriceLabs isn't currently flagging a nudge
+  // (recommended_base_price == current base), and min-stay has no nudge
+  // equivalent at all. Both price AND min-stay changes push through
+  // PriceLabs (setDateOverrides supports minStay — see
+  // packages/integrations/src/pricelabs/client.ts), not MyDataValue, so this
+  // is the concrete number source the structuring step needs to ground a
+  // real, pushable DATE_OVERRIDE action instead of emitting zero actions.
+  // Best-effort: a PriceLabs API hiccup here must not block the whole
+  // suggestion — falls back to the nudge/health data already gathered above.
+  const priceLabsLiveLines: string[] = [];
+  if (priceLabsRef) {
+    const meta = (priceLabsRef.externalMeta as Record<string, unknown> | null) ?? {};
+    const pms = typeof meta.pms === "string" ? meta.pms : null;
+    const plApiKey = process.env.PRICELABS_API_KEY;
+    if (pms && plApiKey) {
+      try {
+        const plClient = new PriceLabsClient(plApiKey);
+        const live = await plClient.getListing(priceLabsRef.externalId);
+        if (live) {
+          priceLabsLiveLines.push(
+            `Aktuelle PriceLabs-Konfiguration (Quelle: PriceLabs, live abgerufen, unabhängig von einer evtl. offenen Preisempfehlung): Basispreis ${live.base ?? "unbekannt"}${live.currency ? ` ${live.currency}` : ""}, Min ${live.min ?? "unbekannt"}, Max ${live.max ?? "unbekannt"}, PriceLabs-Empfehlung ${live.recommendedBasePrice ?? "keine abweichende Empfehlung"}.`
+          );
+        }
+        const from = new Date().toISOString().slice(0, 10);
+        const to = new Date(Date.now() + 13 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+        const days = await plClient.getListingPrices(priceLabsRef.externalId, pms, from, to);
+        if (days.length > 0) {
+          priceLabsLiveLines.push(
+            `Tagespreise & Mindestaufenthalt, nächste 14 Tage (Quelle: PriceLabs, live abgerufen — nutze diese exakten Werte für eine konkrete DATE_OVERRIDE-Aktion, inkl. minStay falls relevant): ${days
+              .map(
+                (d) =>
+                  `${d.date}: Preis ${d.price ?? "n/a"}${d.userPrice != null && d.userPrice !== d.price ? ` (manuell überschrieben auf ${d.userPrice})` : ""}, Min-Stay ${d.minStay ?? "n/a"}${d.demandColor ? `, Nachfrage-Indikator ${d.demandColor}` : ""}`
+              )
+              .join(" | ")}`
+          );
+        }
+      } catch (err) {
+        priceLabsLiveLines.push(
+          `Live-PriceLabs-Abruf für dieses Listing ist fehlgeschlagen (${err instanceof Error ? err.message : String(err)}) — verlasse dich für PRICELABS-Aktionen in diesem Fall nur auf eine ggf. vorhandene "Offene PriceLabs-Preisempfehlung" weiter unten, falls vorhanden.`
+        );
+      }
+    }
+  }
 
   const drivers = (latestSnapshot?.drivers as unknown as Array<{ detail: string; actionSuggestion: string }>) ?? [];
 
@@ -380,6 +431,7 @@ export async function generateAiSuggestion(listingId: string): Promise<void> {
     pendingNudge
       ? `Offene PriceLabs-Preisempfehlung (Quelle: PriceLabs): ${pendingNudge.currentValue} → ${pendingNudge.suggestedValue}`
       : "Keine offene PriceLabs-Preisempfehlung.",
+    ...priceLabsLiveLines,
     channelFunnels.length > 0
       ? `MyDataValue-Funnel für diese Unterkunft (Quelle: MyDataValue, nur Airbnb/Booking.com abgedeckt): ${channelFunnels
           .map((f) => `${f.system} — ${f.searchViews} Sucheinblendungen, ${f.propertyViews} Objektaufrufe, ${f.bookingConversions} Buchungen (Stand ${f.periodEnd.toISOString().slice(0, 10)})`)
