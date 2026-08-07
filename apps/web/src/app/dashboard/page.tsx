@@ -61,6 +61,7 @@ function describeDecision(
 
 export default async function DashboardPage() {
   const { tenantId } = await requireSession();
+  const aiSuggestionsEnabled = Boolean(process.env.ANTHROPIC_API_KEY);
 
   const listings = await prisma.internalListing.findMany({
     where: { tenantId },
@@ -280,17 +281,31 @@ export default async function DashboardPage() {
               Ziel speichern
             </button>
           </form>
-          <form action={generateAiSuggestion.bind(null, listing.id)} className="mt-2">
-            <button
-              type="submit"
-              className="rounded-md bg-brand-yellow px-3 py-1.5 text-xs font-medium text-[#14181f] hover:bg-brand-active"
-            >
-              Neuen KI-Vorschlag generieren
-            </button>
-            <span className="ml-2 text-xs text-[#6b7280]">
-              Nutzt das gespeicherte Ziel + aktuelle Daten. Braucht ANTHROPIC_API_KEY.
-            </span>
-          </form>
+          {aiSuggestionsEnabled ? (
+            <form action={generateAiSuggestion.bind(null, listing.id)} className="mt-2">
+              <button
+                type="submit"
+                className="rounded-md bg-brand-yellow px-3 py-1.5 text-xs font-medium text-[#14181f] hover:bg-brand-active"
+              >
+                Neuen KI-Vorschlag generieren
+              </button>
+              <span className="ml-2 text-xs text-[#6b7280]">Nutzt das gespeicherte Ziel + aktuelle Daten.</span>
+            </form>
+          ) : (
+            <div className="mt-2">
+              <button
+                type="button"
+                disabled
+                title="ANTHROPIC_API_KEY ist auf web-app noch nicht gesetzt"
+                className="cursor-not-allowed rounded-md bg-[#f0f0f0] px-3 py-1.5 text-xs font-medium text-[#9ca3af]"
+              >
+                Neuen KI-Vorschlag generieren
+              </button>
+              <span className="ml-2 text-xs text-[#6b7280]">
+                Noch nicht aktiv — ANTHROPIC_API_KEY fehlt auf web-app.
+              </span>
+            </div>
+          )}
         </details>
       </div>
     );
