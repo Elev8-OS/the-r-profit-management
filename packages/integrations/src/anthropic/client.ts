@@ -18,6 +18,20 @@ export class AnthropicApiError extends Error {
   }
 }
 
+export interface GenerateTextOptions {
+  /** Optional system prompt — sets persona/role/output-format instructions separately from the user message. */
+  system?: string;
+  maxTokens?: number;
+  /**
+   * Enables Anthropic's server-side web search tool (web_search_20250305).
+   * Claude decides when to search and the search runs server-side within the
+   * same request — no client-side tool loop needed. Each search has its own
+   * cost on top of normal token usage; keep maxWebSearches conservative.
+   */
+  enableWebSearch?: boolean;
+  maxWebSearches?: number;
+}
+
 export class AnthropicClient {
   constructor(
     private apiKey: string,
@@ -29,8 +43,26 @@ export class AnthropicClient {
     }
   }
 
-  /** Single-turn text generation — no conversation state, no tool use. */
-  async generateText(prompt: string, maxTokens = 600): Promise<string> {
+  /**
+   * Single-turn text generation. No client-side conversation state is kept —
+   * when enableWebSearch is set, Claude's server-side web search tool still
+   * runs entirely within this one HTTP call (Anthropic executes the searches
+   * and feeds results back to the model before returning), so no tool-use
+   * loop needs to be implemented here.
+   */
+  async generateText(prompt: string, opts: GenerateTextOptions = {}): Promise<string> {
+    const { system, maxTokens = 600, enableWebSearch = false, maxWebSearches = 5 } = opts;
+
+    const body: Record<string, unknown> = {
+      model: this.model,
+      max_tokens: maxTokens,
+      messages: [{ role: "user", content: prompt }],
+    };
+    if (system) body.system = system;
+    if (enableWebSearch) {
+      body.tools = [{ type: "web_search_20250305", name: "web_search", max_uses: maxWebSearches }];
+    }
+
     const res = await fetch(`${this.baseUrl}/v1/messages`, {
       method: "POST",
       headers: {
@@ -38,28 +70,30 @@ export class AnthropicClient {
         "anthropic-version": "2023-06-01",
         "content-type": "application/json",
       },
-      body: JSON.stringify({
-        model: this.model,
-        max_tokens: maxTokens,
-        messages: [{ role: "user", content: prompt }],
-      }),
+      body: JSON.stringify(body),
     });
 
     if (!res.ok) {
-      let body: unknown = null;
+      let responseBody: unknown = null;
       try {
-        body = await res.json();
+        responseBody = await res.json();
       } catch {
         // ignore
       }
-      throw new AnthropicApiError(`Anthropic API error ${res.status}`, res.status, body);
+      throw new AnthropicApiError(`Anthropic API error ${res.status}`, res.status, responseBody);
     }
 
     const data = (await res.json()) as { content?: Array<{ type: string; text?: string }> };
-    const textBlock = data.content?.find((b) => b.type === "text" && typeof b.text === "string");
-    if (!textBlock?.text) {
+    // With web search enabled, content can interleave server_tool_use /
+    // web_search_tool_result blocks with one or more text blocks. Join every
+    // text block in order rather than assuming exactly one.
+    const textBlocks = (data.content ?? [])
+      .filter((b): b is { type: string; text: string } => b.type === "text" && typeof b.text === "string")
+      .map((b) => b.text.trim())
+      .filter(Boolean);
+    if (textBlocks.length === 0) {
       throw new AnthropicApiError("Anthropic response had no text content", 200, data);
     }
-    return textBlock.text.trim();
+    return textBlocks.join("\n\n").trim();
   }
 }

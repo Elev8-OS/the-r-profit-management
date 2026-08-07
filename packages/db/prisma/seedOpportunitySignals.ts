@@ -183,6 +183,33 @@ async function main() {
   }
 
   // ---------------------------------------------------------------------
+  // 1b. Elev8 portfolio-wide channel mix + guest origins -> PortfolioContextSnapshot
+  //     One-time snapshot (see PortfolioContextSnapshot doc comment in schema.prisma)
+  //     feeding the AI_SUGGESTION generator's "dynamische Bestandsaufnahme" step.
+  // ---------------------------------------------------------------------
+  const portfolioContextData = loadJson<{
+    source: string;
+    channelMix: unknown;
+    guestOrigins: unknown;
+  }>("elev8PortfolioContextJuly2026.json");
+  await prisma.portfolioContextSnapshot.upsert({
+    where: { tenantId: tenant.id },
+    update: {
+      channelMix: portfolioContextData.channelMix as object,
+      guestOrigins: portfolioContextData.guestOrigins as object,
+      source: portfolioContextData.source,
+      capturedAt: new Date(),
+    },
+    create: {
+      tenantId: tenant.id,
+      channelMix: portfolioContextData.channelMix as object,
+      guestOrigins: portfolioContextData.guestOrigins as object,
+      source: portfolioContextData.source,
+      capturedAt: new Date(),
+    },
+  });
+
+  // ---------------------------------------------------------------------
   // 2. MDV channel-funnel rankings -> ListingChannelFunnel
   // ---------------------------------------------------------------------
   const funnelsByListing = new Map<
@@ -770,6 +797,7 @@ async function main() {
   // 8. Summary
   // ---------------------------------------------------------------------
   console.log("Opportunity signal seed complete.");
+  console.log(`  Portfolio context snapshot (channel mix + guest origins) refreshed for tenant ${tenant.id}.`);
   console.log(
     `  MDV Booking ranking:  ${bookingRankMatched} matched / ${bookingRankSkipped} skipped`
   );

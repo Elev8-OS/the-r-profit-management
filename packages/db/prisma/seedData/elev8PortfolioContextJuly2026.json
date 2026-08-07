@@ -1,0 +1,26 @@
+{
+  "source": "elev8-suite MCP (get_revenue_by_channel, get_guest_origins) — one-time portfolio-wide snapshot captured 2026-08-07, NOT per-listing and NOT live-synced. See AI suggestion generator's known-gap note in .env.example / architecture doc.",
+  "channelMix": {
+    "periodLabel": "2026-07",
+    "capturedAt": "2026-08-07T00:00:00.000Z",
+    "rows": [
+      { "channel": "DIRECT", "pctOfRevenue": 58, "pctOfBookings": 46.2, "reservations": 6, "avgDailyRate": 55.95, "avgNights": 60.7, "totalRevenue": 20452.65, "currency": "CHF" },
+      { "channel": "AIRBNB", "pctOfRevenue": 18.3, "pctOfBookings": 23.1, "reservations": 3, "avgDailyRate": 114.16, "avgNights": 20.7, "totalRevenue": 6465.6, "currency": "CHF" },
+      { "channel": "BOOKING_COM", "pctOfRevenue": 12.6, "pctOfBookings": 23.1, "reservations": 3, "avgDailyRate": 172.45, "avgNights": 9.0, "totalRevenue": 4433.27, "currency": "CHF" },
+      { "channel": "CTRIP", "pctOfRevenue": 11.2, "pctOfBookings": 7.7, "reservations": 1, "avgDailyRate": 119.28, "avgNights": 33.0, "totalRevenue": 3936.2, "currency": "CHF" }
+    ]
+  },
+  "guestOrigins": {
+    "periodLabel": "2026-06-01..2026-08-06",
+    "capturedAt": "2026-08-07T00:00:00.000Z",
+    "topRows": [
+      { "country": "Germany", "nationality": "German", "pctOfTotal": 15.9, "bookingCount": 7, "avgStayNights": 25.4, "totalRevenue": 11917.97, "currency": "CHF" },
+      { "country": "Italy", "nationality": "Italian", "pctOfTotal": 9.1, "bookingCount": 4, "avgStayNights": 9.0, "totalRevenue": 5638.88, "currency": "CHF" },
+      { "country": "Saudi Arabia", "nationality": "Saudi, Saudi Arabian", "pctOfTotal": 6.8, "bookingCount": 3, "avgStayNights": 12.0, "totalRevenue": 3201.21, "currency": "CHF" },
+      { "country": "United States of America", "nationality": "American", "pctOfTotal": 4.5, "bookingCount": 2, "avgStayNights": 5.5, "totalRevenue": 2561.16, "currency": "CHF" },
+      { "country": "Netherlands", "nationality": "Dutch, Netherlandic", "pctOfTotal": 4.5, "bookingCount": 2, "avgStayNights": 4.5, "totalRevenue": 1513.58, "currency": "CHF" },
+      { "country": "Switzerland", "nationality": "Swiss", "pctOfTotal": 4.5, "bookingCount": 2, "avgStayNights": 3.0, "totalRevenue": 1135.37, "currency": "CHF" }
+    ],
+    "longTailNote": "Remaining ~24 countries each at 2.3% of total (single bookings) — Algeria, Australia, Austria, Belgium, Colombia, Denmark, Ireland (UK), Israel, Japan, Lithuania, Mexico, Norway, Romania, Spain, Turkey (NL), UAE, Ukraine, UK — long tail, not concentrated in any single secondary market."
+  }
+}

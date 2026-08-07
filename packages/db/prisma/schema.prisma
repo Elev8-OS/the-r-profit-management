@@ -24,6 +24,7 @@ model Tenant {
   costRateCards    CostRateCard[]
   recommendations  Recommendation[]
   syncRuns         SyncRun[]
+  portfolioContext PortfolioContextSnapshot?
 }
 
 model User {
@@ -387,6 +388,27 @@ model PriceLabsNudge {
   @@index([internalListingId])
 }
 
+// Tenant-wide (NOT per-listing) channel-mix + guest-origin snapshot, pulled
+// one-time from Elev8's own MCP tools (get_revenue_by_channel, get_guest_origins)
+// via an interactive session — Elev8's confirmed Partner API (the only one the
+// deployed app can reach) has no revenue/channel/guest-origin endpoints, so
+// this can't be a live per-request job yet. Feeds the AI_SUGGESTION generator's
+// "dynamische Bestandsaufnahme" step (persona doc, architecture/ai-suggestion-
+// revenue-manager-persona.md) with real but portfolio-level, point-in-time data.
+// One row per tenant — re-running the seed script overwrites it with a fresher
+// capture rather than accumulating history.
+model PortfolioContextSnapshot {
+  id           String   @id @default(cuid())
+  tenantId     String   @unique
+  tenant       Tenant   @relation(fields: [tenantId], references: [id])
+  channelMix   Json     // { periodLabel, capturedAt, rows: [{channel, pctOfRevenue, pctOfBookings, ...}] }
+  guestOrigins Json     // { periodLabel, capturedAt, topRows: [...], longTailNote }
+  source       String
+  capturedAt   DateTime
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+}
+
 model OpportunityScoreSnapshot {
   id                          String          @id @default(cuid())
   internalListingId           String
@@ -395,7 +417,7 @@ model OpportunityScoreSnapshot {
   score                       Int             // 0-100, higher = more urgent
   estimatedMonthlyLeakageChf  Decimal?        @db.Decimal(12, 2)
   drivers                     Json            // array of {category, severity (0-100), detail, actionSuggestion}
-  formulaVersion              String          @default("v1")
+  formulaVersion              String
   createdAt                   DateTime        @default(now())
 
   @@unique([internalListingId, date, formulaVersion])
