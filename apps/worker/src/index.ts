@@ -60,14 +60,30 @@ async function main() {
     }
   }
 
-  createWorker(SYNC_QUEUE_NAME, async (job) => {
+  const worker = createWorker(SYNC_QUEUE_NAME, async (job) => {
     const { tenantId } = job.data as { tenantId: string };
-    console.log(`[worker] running job "${job.name}" (${job.id})`);
+    console.log(`[worker] dequeued job "${job.name}" (${job.id}) — starting processing`);
     if (job.name === NIGHTLY_JOB_NAME) {
       await runNightlySync(tenantId);
     } else {
       console.warn(`[worker] unknown job name "${job.name}" — skipping`);
     }
+  });
+
+  // Without these, BullMQ swallows connection/job errors silently — they'd
+  // otherwise never show up in Railway logs, making a stuck/failed job
+  // indistinguishable from one that's still legitimately running.
+  worker.on("error", (err) => {
+    console.error("[worker] BullMQ Worker error event", err);
+  });
+  worker.on("failed", (job, err) => {
+    console.error(`[worker] job "${job?.name}" (${job?.id}) failed:`, err);
+  });
+  worker.on("stalled", (jobId) => {
+    console.error(`[worker] job ${jobId} stalled — BullMQ believes its processor died mid-run`);
+  });
+  worker.on("completed", (job) => {
+    console.log(`[worker] job "${job.name}" (${job.id}) completed`);
   });
 
   console.log(`[worker] started — listening on queue "${SYNC_QUEUE_NAME}"`);
@@ -76,6 +92,16 @@ async function main() {
 main().catch((err) => {
   console.error("[worker] fatal error during startup", err);
   process.exit(1);
+});
+
+// Last-resort visibility: an unhandled rejection or exception here would
+// otherwise crash the process with no explanation in Railway's log view, or
+// (worse, for an EventEmitter-sourced error with no listener) hang silently.
+process.on("unhandledRejection", (reason) => {
+  console.error("[worker] unhandledRejection", reason);
+});
+process.on("uncaughtException", (err) => {
+  console.error("[worker] uncaughtException", err);
 });
 
 process.on("SIGTERM", () => {

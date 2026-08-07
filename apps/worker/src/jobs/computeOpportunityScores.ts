@@ -48,6 +48,7 @@ async function getFxRatesToChf(): Promise<Record<string, number>> {
 
 export async function computeOpportunityScores(tenantId: string): Promise<void> {
   const listings = await prisma.internalListing.findMany({ where: { tenantId } });
+  console.log(`[computeOpportunityScores] gathering signals for ${listings.length} listings...`);
   const fxRatesToChf = await getFxRatesToChf();
 
   function toChf(amount: number, currency: string | null): number | null {
@@ -119,6 +120,7 @@ export async function computeOpportunityScores(tenantId: string): Promise<void> 
       );
     }
   }
+  console.log(`[computeOpportunityScores] signal gathering done — scoring listings...`);
 
   // ---- Portfolio context ----
   const occupancySamples = [...healthByListing.values()]

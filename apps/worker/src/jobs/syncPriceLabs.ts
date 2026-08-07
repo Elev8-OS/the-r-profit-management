@@ -70,15 +70,19 @@ export async function syncPriceLabs(tenantId: string): Promise<void> {
 
   try {
     const client = new PriceLabsClient(apiKey);
+    console.log("[syncPriceLabs] calling PriceLabs GET /v1/listings...");
     const listings = await client.listListings();
     recordsFetched = listings.length;
+    console.log(`[syncPriceLabs] PriceLabs returned ${listings.length} listings`);
     const byExternalId = new Map(listings.map((l) => [l.id, l]));
 
     const refs = await prisma.listingExternalRef.findMany({
       where: { system: "PRICELABS", internalListing: { tenantId } },
     });
+    console.log(`[syncPriceLabs] matched ${refs.length} internal listing refs — writing health snapshots...`);
 
     const analyzedAt = new Date();
+    let processed = 0;
 
     for (const ref of refs) {
       const pl = byExternalId.get(ref.externalId);
@@ -174,6 +178,11 @@ export async function syncPriceLabs(tenantId: string): Promise<void> {
         // Gap closed (e.g. someone already changed the price directly in PriceLabs) — expire it
         // rather than leaving a stale "pending" recommendation around.
         await prisma.priceLabsNudge.update({ where: { nudgeId }, data: { status: "expired" } });
+      }
+
+      processed++;
+      if (processed % 10 === 0 || processed === refs.length) {
+        console.log(`[syncPriceLabs] processed ${processed}/${refs.length} listings`);
       }
     }
 

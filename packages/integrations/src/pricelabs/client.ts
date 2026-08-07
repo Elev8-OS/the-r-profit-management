@@ -104,14 +104,37 @@ export class PriceLabsClient {
   }
 
   private async request<T>(method: string, path: string, body?: unknown): Promise<T> {
-    const res = await fetch(`${this.baseUrl}${path}`, {
-      method,
-      headers: {
-        "X-API-Key": this.apiKey,
-        "Content-Type": "application/json",
-      },
-      body: body !== undefined ? JSON.stringify(body) : undefined,
-    });
+    // Native fetch has no default timeout — a stalled TCP connection to
+    // PriceLabs would otherwise hang this call (and the whole nightly sync
+    // job) forever with no error and no log line. 20s is generous for a
+    // JSON API call; PriceLabs' own API has no documented SLA slower than that.
+    const REQUEST_TIMEOUT_MS = 20_000;
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+
+    let res: Response;
+    try {
+      res = await fetch(`${this.baseUrl}${path}`, {
+        method,
+        headers: {
+          "X-API-Key": this.apiKey,
+          "Content-Type": "application/json",
+        },
+        body: body !== undefined ? JSON.stringify(body) : undefined,
+        signal: controller.signal,
+      });
+    } catch (err) {
+      if (err instanceof Error && err.name === "AbortError") {
+        throw new PriceLabsApiError(
+          `PriceLabs API request timed out after ${REQUEST_TIMEOUT_MS}ms on ${method} ${path}`,
+          0,
+          null
+        );
+      }
+      throw err;
+    } finally {
+      clearTimeout(timeout);
+    }
 
     if (res.status === 429) {
       throw new PriceLabsApiError(
