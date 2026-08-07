@@ -48,6 +48,16 @@ async function main() {
       }
     );
     console.log(`[worker] scheduled "${NIGHTLY_JOB_NAME}" (cron: ${NIGHTLY_CRON}) for tenant ${tenant.id}`);
+
+    // One-off manual trigger for verifying a fresh deploy without waiting for
+    // the next 02:00 UTC tick. Gated behind an env var so it never fires on a
+    // routine redeploy — unset RUN_SYNC_NOW on the worker-app service after use.
+    if (process.env.RUN_SYNC_NOW === "true") {
+      console.log("[worker] RUN_SYNC_NOW=true — running the nightly sync once, immediately");
+      // Same job name as the repeatable schedule (no jobId) so the existing
+      // processor branch picks it up — this just adds one extra immediate run.
+      await syncQueue.add(NIGHTLY_JOB_NAME, { tenantId: tenant.id });
+    }
   }
 
   createWorker(SYNC_QUEUE_NAME, async (job) => {
