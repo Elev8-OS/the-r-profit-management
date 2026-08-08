@@ -61,6 +61,14 @@ export interface PriceLabsDateOverrideInput {
   date: string; // YYYY-MM-DD
   price: number;
   priceType?: "fixed" | "percent";
+  /**
+   * Required by PriceLabs whenever priceType is "fixed" (the default) — an
+   * absolute-price override with no currency is rejected with a 400 (error
+   * code "DSO-CUR-MS", confirmed live 2026-08-08 when pushing a price
+   * override for "The R Apartment Adlisberg" without this field). Not
+   * required for priceType "percent".
+   */
+  currency?: string;
   minStay?: number;
   reason?: string;
 }
@@ -223,12 +231,26 @@ export class PriceLabsClient {
    * This changes live prices. Must only ever be called from an explicit,
    * user-triggered server action (see apps/web recommendations actions) —
    * never from a scheduled job.
+   *
+   * PriceLabs requires `currency` on every override whose price_type is
+   * "fixed" (our default) — confirmed live 2026-08-08 via a real 400 error
+   * ("DSO-CUR-MS") when pushing a price override for "The R Apartment
+   * Adlisberg" without it. Fail fast here with a clear message rather than
+   * letting PriceLabs' opaque error (further obscured by Next.js's
+   * production error redaction on the client) reach the user unexplained.
    */
   async setDateOverrides(
     listingId: string,
     pms: string,
     overrides: PriceLabsDateOverrideInput[]
   ): Promise<void> {
+    for (const o of overrides) {
+      if ((o.priceType ?? "fixed") === "fixed" && !o.currency) {
+        throw new Error(
+          `setDateOverrides: currency is required for date ${o.date} (price_type "fixed") — PriceLabs rejects a fixed-price override with no currency.`
+        );
+      }
+    }
     await this.request("POST", `/v1/listings/${encodeURIComponent(listingId)}/overrides`, {
       pms,
       update_children: false,
@@ -236,6 +258,7 @@ export class PriceLabsClient {
         date: o.date,
         price: String(o.price),
         price_type: o.priceType ?? "fixed",
+        ...(o.currency ? { currency: o.currency } : {}),
         min_stay: o.minStay,
         reason: o.reason ?? "Set via The R profit management dashboard",
       })),

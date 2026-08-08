@@ -16,6 +16,15 @@ import { useEffect, useState, useTransition } from "react";
  * actions are valid to invoke as functions from a client component, not just
  * bind to a <form>), so this works for both a single action
  * (pushAiSuggestionAction bound to one index) and the "push all" action.
+ *
+ * `run` returns a result object rather than throwing on failure — Next.js
+ * redacts any error *thrown* across a Server Action boundary down to a
+ * generic "An error occurred in the Server Components render..." message in
+ * production builds, which hid the real problem from Reto even once the
+ * underlying bug was understood (confirmed live 2026-08-08). Returning
+ * `{ ok: false, error }` as plain data instead sidesteps that redaction, so
+ * the actual message reaches this button. Still catches thrown errors as a
+ * fallback for anything that isn't yet converted to this pattern.
  */
 export function ConfirmActionButton({
   run,
@@ -24,7 +33,7 @@ export function ConfirmActionButton({
   dependencyNote,
   className,
 }: {
-  run: () => Promise<void>;
+  run: () => Promise<{ ok: boolean; error?: string } | void>;
   label: string;
   pendingLabel: string;
   dependencyNote: string;
@@ -54,7 +63,10 @@ export function ConfirmActionButton({
     setOpen(false);
     startTransition(async () => {
       try {
-        await run();
+        const result = await run();
+        if (result && result.ok === false) {
+          setError(result.error ?? "Push fehlgeschlagen.");
+        }
       } catch (err) {
         setError(err instanceof Error ? err.message : "Push fehlgeschlagen.");
       }
