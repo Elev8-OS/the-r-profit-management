@@ -2,20 +2,81 @@
 @tailwind components;
 @tailwind utilities;
 
-/* Elev8 Suite design tokens (see elev8-product-knowledge brand reference) */
+/* Elev8 Suite design tokens (see elev8-product-knowledge brand reference).
+   Kept deliberately inside the existing light/gold identity -- this is the
+   "wow factor" pass's foundation layer (2026-08-08), not a new palette. */
 :root {
   --color-background-primary: #ffffff;
+  --color-background-sunken: #f7f7f8;
   --color-text-primary: #14181f;
   --color-text-secondary: #6b7280;
+  --color-text-tertiary: #9ca3af;
   --color-border-tertiary: #e5e7eb;
+  --color-border-strong: #d1d5db;
   --border-radius-lg: 0.75rem;
   --border-radius-md: 0.5rem;
   --brand-yellow: #f6bb12;
   --brand-active: #efb100;
   --brand-gold: #c8a84b;
+  --shadow-card: 0 1px 2px 0 rgb(20 24 31 / 0.04), 0 1px 3px 0 rgb(20 24 31 / 0.06);
+  --shadow-card-hover: 0 4px 10px -2px rgb(20 24 31 / 0.08), 0 8px 24px -4px rgb(20 24 31 / 0.1);
+}
+
+* {
+  border-color: var(--color-border-tertiary);
+}
+
+html {
+  scroll-behavior: smooth;
 }
 
 body {
-  background-color: #f7f7f8;
+  background-color: var(--color-background-sunken);
   color: var(--color-text-primary);
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+::selection {
+  background-color: rgba(246, 187, 18, 0.28);
+  color: var(--color-text-primary);
+}
+
+/* Slim, unobtrusive scrollbar that still reads as "premium" rather than
+   default-browser-chrome. */
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background-color: #d1d5db;
+  border-radius: 9999px;
+  border: 2px solid var(--color-background-sunken);
+}
+::-webkit-scrollbar-thumb:hover {
+  background-color: #9ca3af;
+}
+
+/* Consistent, brand-colored focus ring for keyboard users, without the
+   default browser blue clashing against the gold accent system. */
+:focus-visible {
+  outline: 2px solid var(--brand-active);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
+/* Shimmering skeleton-loading background, used sparingly for perceived
+   performance on data-heavy tiles. */
+.skeleton-shimmer {
+  background: linear-gradient(90deg, #eef0f2 25%, #f7f7f8 37%, #eef0f2 63%);
+  background-size: 400% 100%;
+}
+
+/* Subtle top-of-page radial gold glow used behind hero/header sections to
+   add depth without introducing a new color. */
+.glow-backdrop {
+  background-image: radial-gradient(60% 60% at 50% 0%, rgba(246, 187, 18, 0.14) 0%, rgba(246, 187, 18, 0) 70%);
 }

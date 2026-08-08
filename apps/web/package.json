@@ -10,12 +10,15 @@
   },
   "dependencies": {
     "@the-r/db": "workspace:*",
-    "@the-r/shared": "workspace:*",
     "@the-r/integrations": "workspace:*",
+    "@the-r/shared": "workspace:*",
+    "clsx": "^2.1.1",
+    "lucide-react": "^1.30.0",
     "next": "14.2.5",
     "next-auth": "^4.24.7",
     "react": "^18.3.1",
-    "react-dom": "^18.3.1"
+    "react-dom": "^18.3.1",
+    "recharts": "^3.10.1"
   },
   "devDependencies": {
     "@types/node": "^20.14.0",
