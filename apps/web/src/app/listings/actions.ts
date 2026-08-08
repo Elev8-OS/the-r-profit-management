@@ -3,7 +3,7 @@
 import { prisma } from "@the-r/db";
 import { revalidatePath } from "next/cache";
 import { requireSession } from "@/lib/auth-helpers";
-import { AnthropicClient, PriceLabsClient } from "@the-r/integrations";
+import { AnthropicClient, PriceLabsClient, type PriceLabsDateOverride } from "@the-r/integrations";
 
 export async function addListing(formData: FormData) {
   const { tenantId } = await requireSession();
@@ -87,7 +87,7 @@ export async function addCapex(listingId: string, formData: FormData) {
   revalidatePath(`/listings/${listingId}`);
 }
 
-/** Save the owner's free-text goal/context for a listing. No AI call here -- just storage. */
+/** Save the owner's free-text goal/context for a listing. No AI call here — just storage. */
 export async function updateListingGoal(listingId: string, formData: FormData): Promise<void> {
   const { tenantId } = await requireSession();
   await assertListingBelongsToTenant(listingId, tenantId);
@@ -105,7 +105,7 @@ export async function updateListingGoal(listingId: string, formData: FormData): 
 
 /**
  * Shared language rule for both generation steps below. "Automatic" default
- * (German -- this portfolio's owner and market base) but explicitly
+ * (German — this portfolio's owner and market base) but explicitly
  * overridable by whatever the owner wrote in the listing's goalNotes (e.g.
  * "please reply in English"), per Reto's request 2026-08-07 that suggestion
  * language be automatic AND settable via the prompt/goal text rather than a
@@ -121,7 +121,7 @@ const LANGUAGE_RULE = `Sprache: Antworte automatisch in der Sprache, die zum Kon
  * server-side web search enabled) that step 2 below then structures into a
  * fixed JSON shape. Kept as prose-with-research here because Anthropic's
  * forced-tool-choice structured output (step 2) cannot also call the web
- * search tool in the same request -- see AnthropicClient.generateJson's doc
+ * search tool in the same request — see AnthropicClient.generateJson's doc
  * comment.
  */
 const REVENUE_MANAGER_SYSTEM_PROMPT = `Du bist ein sehr erfahrener, datengetriebener Revenue Manager für STR- und Boutique-Hotel-Portfolios weltweit. Dein Auftrag: Preise, Auslastung und Profitabilität gleichzeitig optimieren — gemessen an Net Revenue nach Kanalkosten, nicht nur an Top-Line-ADR oder Occupancy.
@@ -141,7 +141,7 @@ ${LANGUAGE_RULE}`;
 /**
  * STEP 2 of the generation: takes step 1's analysis (plus the same raw data,
  * so numbers/dates aren't re-derived from prose) and forces it into the
- * StructuredSuggestion JSON shape via AnthropicClient.generateJson -- this is
+ * StructuredSuggestion JSON shape via AnthropicClient.generateJson — this is
  * what actually drives the per-tool push buttons in the dashboard. See
  * StructuredSuggestion / STRUCTURED_SUGGESTION_SCHEMA below.
  */
@@ -149,7 +149,9 @@ const STRUCTURING_SYSTEM_PROMPT = `Du strukturierst eine bereits erstellte Reven
 
 Für jede Aktion mit tool=PRICELABS: verwende AUSSCHLIESSLICH die exakten Zahlen aus dem bereitgestellten Rohdaten-Kontext — das ist entweder die "Offene PriceLabs-Preisempfehlung" ODER (häufiger) die live abgerufene "Aktuelle PriceLabs-Konfiguration" bzw. die "Tagespreise/Mindestaufenthalt"-Liste der nächsten 14 Tage. Erfinde oder runde keine Zahlen aus der Analyse-Prosa. Preis UND Mindestaufenthalt (min_stay) werden BEIDE über PriceLabs gepusht (nicht über MyDataValue) — verwende für jede konkrete, datumsbezogene Preis- oder Mindestaufenthalt-Änderung IMMER actionType=DATE_OVERRIDE mit params={date, price, minStay} (minStay optional, nur setzen wenn sich der Mindestaufenthalt ändern soll); nutze actionType=BASE_PRICE_UPDATE nur für eine pauschale Basispreis-Änderung ohne Datumsbezug. Setze niemals actionType=MIN_STAY_CHANGE für tool=PRICELABS — das würde einen Push-Button erzeugen, der beim Klick fehlschlägt, weil dieser Aktionstyp für PriceLabs nicht ausgeführt werden kann.
 
-WICHTIG — blockierte/deaktivierte Tage: Ein Tag in der Tagespreise-Liste mit Preis -1 (oder als "BLOCKIERT"/"nicht buchbar" markiert, siehe bookingStatus) ist KEIN normaler Preis, sondern eine manuelle Sperre — die Unterkunft ist an diesem Tag nicht buchbar, unabhängig von Nachfrage. Das ist strukturell etwas anderes als "Preis zu hoch/niedrig" und braucht einen ANDEREN actionType: verwende actionType=CLEAR_DATE_OVERRIDE mit params={dates: ["YYYY-MM-DD", ...]} (alle betroffenen blockierten Tage in einem Array), um die Sperre aufzuheben und den Tag wieder buchbar zu machen. Verwende dafür NIEMALS DATE_OVERRIDE mit einem erfundenen Ersatzpreis — es gibt keinen "richtigen" Preis, den du für einen blockierten Tag einsetzen könntest, ohne ihn zu erfinden.
+WICHTIG — Preis -1 bedeutet NICHT automatisch "manuell gesperrt": Ein Tag mit Preis/user_price -1 in der Tagespreise-Liste hat in den allermeisten Fällen eine ganz andere Ursache als eine Host-Sperre — nämlich eine bereits bestehende GAST-RESERVIERUNG (booking_status enthält "Book", z.B. "Booked" oder "Booked (Check-In)"). PriceLabs zeigt für bereits verkaufte/belegte Nächte schlicht keinen Verkaufspreis an, das ist ein normaler, gesunder Zustand und KEIN Problem. Wenn der Kontext unten einen Tag explizit als "BEREITS GEBUCHT (aktive Reservierung)" kennzeichnet: erwähne das höchstens informativ (z.B. als Beleg für hohe Auslastung), aber schlage NIEMALS eine CLEAR_DATE_OVERRIDE- oder sonstige "Sperre aufheben"-Aktion dafür vor — es gibt dort keinen echten Override zum Aufheben, und eine solche Aktion wäre schlicht falsch.
+
+Nur wenn der Kontext unten einen Tag explizit als "MANUELL GESPERRT (echter Override vorhanden)" kennzeichnet — d.h. Preis -1 UND keine aktive Reservierung UND ein bestätigter Eintrag in den tatsächlichen PriceLabs-Overrides —, ist das eine echte, vom Eigentümer gesetzte Sperre. Nur dafür: verwende actionType=CLEAR_DATE_OVERRIDE mit params={dates: ["YYYY-MM-DD", ...]} (alle betroffenen Tage in einem Array), um sie aufzuheben. Verwende dafür NIEMALS DATE_OVERRIDE mit einem erfundenen Ersatzpreis — es gibt keinen "richtigen" Preis, den du für einen gesperrten Tag einsetzen könntest, ohne ihn zu erfinden.
 
 Wenn eine sinnvolle Aktion keine ausreichende Zahlengrundlage in den Rohdaten hat, ordne sie stattdessen als tool=MDV_AIRBNB/MDV_BOOKING/OTHER ein (nicht automatisch pushbar) oder lass sie weg — täusche keine PriceLabs-Aktion vor, die nicht wirklich ausführbar ist. WICHTIG: Beurteile jede mögliche Aktion EINZELN und UNABHÄNGIG. Wenn eine Handlungsidee (z.B. eine Preisänderung für einen bestimmten Zeitraum) keinen sauberen actionType oder keine ausreichende Zahlengrundlage hat, lass NUR DIESE EINE weg — gib trotzdem alle anderen, tatsächlich umsetzbaren Aktionen zurück (z.B. eine Sperre aufheben UND separat einen Preis für andere Tage anpassen sind zwei unabhängige Aktionen). Brich niemals das gesamte actions-Array ab, nur weil eine einzelne Teilaktion nicht sauber abbildbar ist.
 
@@ -185,7 +187,7 @@ interface StructuredSuggestion {
 /**
  * Anthropic's forced tool_choice makes the model emit input matching the
  * JSON schema in the common case, but the schema is guidance, not hard
- * validation -- nothing stops the model from returning e.g. `signals` as a
+ * validation — nothing stops the model from returning e.g. `signals` as a
  * single string instead of an array. That happened in production on
  * 2026-08-07 (digest 1590599801: "a.signals.map is not a function", crashing
  * the whole dashboard render for the listing that suggestion belonged to).
@@ -304,18 +306,18 @@ const STRUCTURED_SUGGESTION_SCHEMA = {
  * Generates one new AI_SUGGESTION recommendation for a listing, combining its
  * goalNotes with the latest real signal data: Opportunity Score drivers,
  * PriceLabs health/nudge, MyDataValue channel-funnel + review scores for this
- * listing, and the tenant-wide (not per-listing -- see PortfolioContextSnapshot
+ * listing, and the tenant-wide (not per-listing — see PortfolioContextSnapshot
  * doc comment in schema.prisma) Elev8 channel-mix + guest-origin snapshot.
  * Follows the Revenue Manager persona Reto provided (architecture/ai-
  * suggestion-revenue-manager-persona.md) and can use Claude's server-side web
  * search for external research (holidays, macro data) per that persona's
- * source hierarchy -- each search has its own cost on top of normal tokens.
+ * source hierarchy — each search has its own cost on top of normal tokens.
  *
  * Two Anthropic calls: (1) free-form analysis with web search enabled, (2) a
  * forced-tool structuring call (no search) that turns that analysis into a
- * StructuredSuggestion -- summary + bulletable signals + 0-4 concrete
+ * StructuredSuggestion — summary + bulletable signals + 0-3 concrete
  * per-tool actions. Only tool=PRICELABS actions are actually pushable today
- * (see pushAiSuggestionAction in ../recommendations/actions.ts) -- MDV writes
+ * (see pushAiSuggestionAction in ../recommendations/actions.ts) — MDV writes
  * are not wired up yet. OAuth2 write credentials are now confirmed and the
  * token-rotation pipeline exists (MdvTokenManager / PrismaMdvTokenStore),
  * but MDV's actual write-endpoint request/response shapes are still
@@ -323,7 +325,7 @@ const STRUCTURED_SUGGESTION_SCHEMA = {
  * actions are shown as informational-only in the dashboard until that's
  * filled in.
  *
- * Requires ANTHROPIC_API_KEY -- a real Anthropic API key from
+ * Requires ANTHROPIC_API_KEY — a real Anthropic API key from
  * console.anthropic.com, a separate credential from anything else in this
  * app; set directly as a Railway env var, never committed.
  */
@@ -340,7 +342,7 @@ export async function generateAiSuggestion(listingId: string): Promise<void> {
 
   // Auto-supersede: without this, every click piles up a new card next to
   // whatever's still pending from the last click (this is exactly what
-  // produced Reto's 4 duplicate "KI-Vorschlag" cards on 2026-08-07 -- three
+  // produced Reto's 4 duplicate "KI-Vorschlag" cards on 2026-08-07 — three
   // clicks made before the pending-state UI existed, each of which silently
   // succeeded). Regenerating for a listing now retires its previous pending
   // AI_SUGGESTION instead of leaving it to accumulate.
@@ -385,16 +387,16 @@ export async function generateAiSuggestion(listingId: string): Promise<void> {
 
   // Live PriceLabs pull (current base/min/max + next-14-days price/min-stay),
   // done fresh on every generation rather than relying only on the
-  // pre-synced "implied nudge" table -- a listing can genuinely need a price
+  // pre-synced "implied nudge" table — a listing can genuinely need a price
   // or min-stay change even when PriceLabs isn't currently flagging a nudge
   // (recommended_base_price == current base), and min-stay has no nudge
   // equivalent at all. Both price AND min-stay changes push through
-  // PriceLabs (setDateOverrides supports minStay -- see
+  // PriceLabs (setDateOverrides supports minStay — see
   // packages/integrations/src/pricelabs/client.ts), not MyDataValue, so this
   // is the concrete number source the structuring step needs to ground a
   // real, pushable DATE_OVERRIDE action instead of emitting zero actions.
   // Best-effort: a PriceLabs API hiccup here must not block the whole
-  // suggestion -- falls back to the nudge/health data already gathered above.
+  // suggestion — falls back to the nudge/health data already gathered above.
   const priceLabsLiveLines: string[] = [];
   if (priceLabsRef) {
     const meta = (priceLabsRef.externalMeta as Record<string, unknown> | null) ?? {};
@@ -411,25 +413,68 @@ export async function generateAiSuggestion(listingId: string): Promise<void> {
         }
         const from = new Date().toISOString().slice(0, 10);
         const to = new Date(Date.now() + 13 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
-        const days = await plClient.getListingPrices(priceLabsRef.externalId, pms, from, to);
+        // Fetch the daily price feed AND the actual configured overrides in
+        // parallel. These are two different things in PriceLabs and must not
+        // be conflated (see the block below) — confirmed against live data
+        // for "The R Apartment Adlisberg" 2026-08-08, where Aug 8-10 showed
+        // user_price -1 with booking_status "Booked" and ZERO entries in the
+        // real overrides endpoint: the -1 there meant "already booked, no
+        // sell price needed", not "host blocked this date". Reto flagged
+        // that an earlier version of this fix wrongly told him the guest
+        // reservation he could see in Elev8 was a manual host lockout.
+        const [days, actualOverrides] = await Promise.all([
+          plClient.getListingPrices(priceLabsRef.externalId, pms, from, to),
+          plClient
+            .getDateOverrides(priceLabsRef.externalId)
+            .catch(() => [] as PriceLabsDateOverride[]),
+        ]);
+        const overrideDateSet = new Set(actualOverrides.map((o) => o.date));
         if (days.length > 0) {
-          const blockedDates = days
-            .filter((d) => d.userPrice === -1 || d.price === -1 || (d.bookingStatus ?? "").toLowerCase().includes("block"))
+          // Reserved = an actual guest reservation occupies this night
+          // (booking_status says so). This is a normal, healthy state, never
+          // a "block" to clear.
+          const reservedDates = days
+            .filter((d) => (d.bookingStatus ?? "").toLowerCase().includes("book"))
             .map((d) => d.date);
+          // Genuinely blocked = price shows -1, there's no reservation
+          // explaining it, AND PriceLabs' own overrides endpoint confirms a
+          // real override exists on that date. Only this combination is an
+          // actual host-set lock worth offering to clear.
+          const genuinelyBlockedDates = days
+            .filter(
+              (d) =>
+                !(d.bookingStatus ?? "").toLowerCase().includes("book") &&
+                (d.userPrice === -1 || d.price === -1) &&
+                overrideDateSet.has(d.date)
+            )
+            .map((d) => d.date);
+
           priceLabsLiveLines.push(
             `Tagespreise & Mindestaufenthalt, nächste 14 Tage (Quelle: PriceLabs, live abgerufen — nutze diese exakten Werte für eine konkrete DATE_OVERRIDE-Aktion, inkl. minStay falls relevant): ${days
               .map((d) => {
-                const isBlocked = d.userPrice === -1 || d.price === -1;
-                const priceLabel = isBlocked ? "BLOCKIERT/nicht buchbar (Preis -1)" : String(d.price ?? "n/a");
+                const isReserved = (d.bookingStatus ?? "").toLowerCase().includes("book");
+                const isGenuineBlock = genuinelyBlockedDates.includes(d.date);
+                const priceLabel = isReserved
+                  ? "BEREITS GEBUCHT (aktive Reservierung, kein Verkaufspreis nötig)"
+                  : isGenuineBlock
+                    ? "MANUELL GESPERRT (Preis -1, echter Override bestätigt, keine Reservierung)"
+                    : String(d.price ?? "n/a");
                 const overrideNote =
-                  !isBlocked && d.userPrice != null && d.userPrice !== d.price ? ` (manuell überschrieben auf ${d.userPrice})` : "";
+                  !isReserved && !isGenuineBlock && d.userPrice != null && d.userPrice !== d.price
+                    ? ` (manuell überschrieben auf ${d.userPrice})`
+                    : "";
                 return `${d.date}: Preis ${priceLabel}${overrideNote}, Min-Stay ${d.minStay ?? "n/a"}${d.bookingStatus ? `, Booking-Status ${d.bookingStatus}` : ""}${d.demandColor ? `, Nachfrage-Indikator ${d.demandColor}` : ""}`;
               })
               .join(" | ")}`
           );
-          if (blockedDates.length > 0) {
+          if (reservedDates.length > 0) {
             priceLabsLiveLines.push(
-              `WICHTIGER HINWEIS: Die Tage ${blockedDates.join(", ")} sind aktuell durch eine manuelle Sperre (Preis -1) blockiert/nicht buchbar — das ist strukturell keine Preisfrage, sondern eine Verfügbarkeits-Sperre. Falls diese Sperre nicht beabsichtigt ist bzw. dem Ziel des Eigentümers widerspricht, schlage eine actionType=CLEAR_DATE_OVERRIDE-Aktion mit params={dates: [${blockedDates.map((d) => `"${d}"`).join(", ")}]} vor, um sie aufzuheben — unabhängig von jeder Preisempfehlung für andere Tage.`
+              `HINWEIS: Die Tage ${reservedDates.join(", ")} zeigen Preis -1, weil dort bereits eine aktive Gast-Reservierung existiert (booking_status enthält "Book", bestätigt: 0 Einträge in den tatsächlichen PriceLabs-Overrides für diese Daten) — normaler Zustand, KEINE Host-Sperre. Nicht als Problem behandeln und dafür KEINE CLEAR_DATE_OVERRIDE-Aktion vorschlagen.`
+            );
+          }
+          if (genuinelyBlockedDates.length > 0) {
+            priceLabsLiveLines.push(
+              `WICHTIGER HINWEIS: Die Tage ${genuinelyBlockedDates.join(", ")} sind durch einen bestätigten ECHTEN manuellen Override (Preis -1, keine Reservierung, Eintrag in den PriceLabs-Overrides vorhanden) gesperrt. Falls das nicht beabsichtigt ist, schlage eine actionType=CLEAR_DATE_OVERRIDE-Aktion mit params={dates: [${genuinelyBlockedDates.map((d) => `"${d}"`).join(", ")}]} vor, um sie aufzuheben — unabhängig von jeder Preisempfehlung für andere Tage.`
             );
           }
         }
