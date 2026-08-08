@@ -6,7 +6,7 @@ import { requireSession } from "@/lib/auth-helpers";
 import { PriceLabsClient } from "@the-r/integrations";
 
 /**
- * Real push actions — these are the only places in the app allowed to write
+ * Real push actions -- these are the only places in the app allowed to write
  * to PriceLabs. Every one of them requires an authenticated session and an
  * explicit button click; nothing here ever runs from a scheduled job.
  */
@@ -22,25 +22,25 @@ async function loadRecommendationForTenant(recommendationId: string, tenantId: s
 
 function getPriceLabsClient(): PriceLabsClient {
   const apiKey = process.env.PRICELABS_API_KEY;
-  if (!apiKey) throw new Error("PRICELABS_API_KEY is not set — cannot push to PriceLabs yet.");
+  if (!apiKey) throw new Error("PRICELABS_API_KEY is not set -- cannot push to PriceLabs yet.");
   return new PriceLabsClient(apiKey);
 }
 
 function getPriceLabsRef(rec: Awaited<ReturnType<typeof loadRecommendationForTenant>>) {
   const ref = rec.internalListing.externalRefs.find((r) => r.system === "PRICELABS");
-  if (!ref) throw new Error("This listing has no confirmed PriceLabs link — cannot push.");
+  if (!ref) throw new Error("This listing has no confirmed PriceLabs link -- cannot push.");
   const meta = (ref.externalMeta as Record<string, unknown> | null) ?? {};
   const pms = typeof meta.pms === "string" ? meta.pms : null;
   if (!pms) {
     throw new Error(
-      "No PMS name stored for this listing's PriceLabs link yet — run the nightly sync once (it fills this in) before pushing."
+      "No PMS name stored for this listing's PriceLabs link yet -- run the nightly sync once (it fills this in) before pushing."
     );
   }
   return { listingId: ref.externalId, pms };
 }
 
 /**
- * ACCEPT_NUDGE — pushes PriceLabs' recommended_base_price as the listing's
+ * ACCEPT_NUDGE -- pushes PriceLabs' recommended_base_price as the listing's
  * new base price via POST /v1/listings. See PriceLabsClient's file header
  * for why this (not a literal nudge-accept call) is the real REST-backed
  * equivalent of "accepting a nudge".
@@ -98,7 +98,7 @@ export async function pushAcceptNudge(recommendationId: string): Promise<void> {
 }
 
 /**
- * PRICE_OVERRIDE — pushes a manual date-range price override via
+ * PRICE_OVERRIDE -- pushes a manual date-range price override via
  * POST /v1/listings/{id}/overrides. The form supplies the date and price
  * explicitly; today's PRICE_OVERRIDE recommendations are ADR-outlier flags
  * (a likely data-entry error), so this is reviewed and typed by a human,
@@ -175,7 +175,7 @@ type SuggestionProposedAction = {
 /**
  * Runs the external PriceLabs call for one action inside an AI_SUGGESTION's
  * structured `actions` array, then persists that action's new status
- * (SENT/FAILED) back into the recommendation's proposedAction JSON — each
+ * (SENT/FAILED) back into the recommendation's proposedAction JSON -- each
  * action pushes independently, so a suggestion with e.g. 2 PriceLabs actions
  * and 1 MDV action can end up partially sent. The parent recommendation's
  * own `status` only flips to SENT once every *automatable* action in it has
@@ -193,7 +193,7 @@ async function executeSuggestionAction(
   if (!action) throw new Error("Diese Aktion existiert nicht (mehr) in diesem Vorschlag.");
   if (!action.automatable) {
     throw new Error(
-      "Diese Aktion ist noch nicht automatisch pushbar (MyDataValue-Schreibzugriff ist noch nicht angebunden — siehe packages/integrations/src/mdv/client.ts)."
+      "Diese Aktion ist noch nicht automatisch pushbar (MyDataValue-Schreibzugriff ist noch nicht angebunden -- siehe packages/integrations/src/mdv/client.ts)."
     );
   }
   if (action.status !== "PENDING") throw new Error("Diese Aktion wurde bereits entschieden.");
@@ -232,6 +232,15 @@ async function executeSuggestionAction(
         { date, price, minStay, reason: "AI-Vorschlag via The R profit management dashboard" },
       ]);
       auditPayload = { listingId, pms, date, price, minStay: minStay ?? null };
+    } else if (action.actionType === "CLEAR_DATE_OVERRIDE") {
+      const dates = Array.isArray(params.dates)
+        ? params.dates.map((d) => String(d)).filter(Boolean)
+        : typeof params.date === "string" && params.date
+          ? [params.date]
+          : [];
+      if (dates.length === 0) throw new Error("Aktion hat keine gültigen dates zum Aufheben der Sperre.");
+      await client.deleteDateOverrides(listingId, pms, dates);
+      auditPayload = { listingId, pms, clearedDates: dates };
     } else {
       throw new Error(`Aktionstyp ${action.actionType} kann derzeit nicht automatisch gepusht werden.`);
     }
@@ -262,7 +271,7 @@ async function executeSuggestionAction(
 }
 
 /**
- * Push exactly one action from an AI_SUGGESTION's structured action list —
+ * Push exactly one action from an AI_SUGGESTION's structured action list --
  * bound to one "push" button per tool in the dashboard.
  */
 export async function pushAiSuggestionAction(recommendationId: string, actionIndex: number): Promise<void> {
@@ -278,7 +287,7 @@ export async function pushAiSuggestionAction(recommendationId: string, actionInd
 }
 
 /**
- * Push every still-pending automatable action in an AI_SUGGESTION at once —
+ * Push every still-pending automatable action in an AI_SUGGESTION at once --
  * bound to the "Alle Aktionen pushen" button. Reloads the recommendation
  * before each action so an earlier action's status update in this same loop
  * is reflected, rather than pushing from one stale in-memory snapshot.
@@ -313,7 +322,7 @@ export async function pushAllAiSuggestionActions(recommendationId: string): Prom
   if (firstError) throw firstError instanceof Error ? firstError : new Error(String(firstError));
 }
 
-/** Reject any pending recommendation — no external call, just records the decision. */
+/** Reject any pending recommendation -- no external call, just records the decision. */
 export async function rejectRecommendation(recommendationId: string): Promise<void> {
   const { tenantId, userId } = await requireSession();
   const rec = await loadRecommendationForTenant(recommendationId, tenantId);
