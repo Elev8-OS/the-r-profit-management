@@ -151,6 +151,8 @@ const STRUCTURING_SYSTEM_PROMPT = `Du strukturierst eine bereits erstellte Reven
 
 Für jede Aktion mit tool=PRICELABS: verwende AUSSCHLIESSLICH die exakten Zahlen aus dem bereitgestellten Rohdaten-Kontext — das ist entweder die "Offene PriceLabs-Preisempfehlung" ODER (häufiger) die live abgerufene "Aktuelle PriceLabs-Konfiguration" bzw. die "Tagespreise/Mindestaufenthalt"-Liste der nächsten 14 Tage. Erfinde oder runde keine Zahlen aus der Analyse-Prosa. Preis UND Mindestaufenthalt (min_stay) werden BEIDE über PriceLabs gepusht (nicht über MyDataValue) — verwende für jede konkrete, datumsbezogene Preis- oder Mindestaufenthalt-Änderung IMMER actionType=DATE_OVERRIDE mit params={date, price, minStay} (minStay optional, nur setzen wenn sich der Mindestaufenthalt ändern soll); nutze actionType=BASE_PRICE_UPDATE nur für eine pauschale Basispreis-Änderung ohne Datumsbezug. Setze niemals actionType=MIN_STAY_CHANGE für tool=PRICELABS — das würde einen Push-Button erzeugen, der beim Klick fehlschlägt, weil dieser Aktionstyp für PriceLabs nicht ausgeführt werden kann.
 
+WICHTIG — mehrere Tage in EINER Aktion bündeln: Betrifft eine Preis- oder Mindestaufenthalt-Korrektur MEHRERE Tage gleichzeitig (z.B. "Tage 10.-19. Aug sind alle unter der PriceLabs-Empfehlung gepreist, auf PriceLabs-Niveau anheben"), ist das trotzdem EINE einzige DATE_OVERRIDE-Aktion, NICHT eine Aktion pro Tag. Setze dafür params={overrides: [{date, price, minStay?}, ...]} mit genau einem Eintrag pro betroffenem Tag und dem für GENAU DIESEN Tag exakten Wert aus der Tagespreise-Liste (nicht pauschal denselben Wert für alle Tage übernehmen, falls sie unterschiedliche PriceLabs-Empfehlungen haben). Erzeuge NIEMALS mehrere separate DATE_OVERRIDE-Aktionen nur um mehrere Tage abzudecken — das ist unnötig gegen das Aktionslimit (siehe unten) und wird beim Pushen ohnehin in einem einzigen zusammenhängenden Aufruf ausgeführt. Für eine Änderung an nur einem einzelnen Tag bleibt das einfache params={date, price, minStay?} weiterhin gültig. Lass eine mehrtägige Preiskorrektur NIEMALS ganz weg, nur weil sie viele Tage betrifft — bilde sie als die eine gebündelte Aktion ab.
+
 WICHTIG — Preis -1 bedeutet NICHT automatisch "manuell gesperrt": Ein Tag mit Preis/user_price -1 in der Tagespreise-Liste hat in den allermeisten Fällen eine ganz andere Ursache als eine Host-Sperre — nämlich eine bereits bestehende GAST-RESERVIERUNG (booking_status enthält "Book", z.B. "Booked" oder "Booked (Check-In)"). PriceLabs zeigt für bereits verkaufte/belegte Nächte schlicht keinen Verkaufspreis an, das ist ein normaler, gesunder Zustand und KEIN Problem. Wenn der Kontext unten einen Tag explizit als "BEREITS GEBUCHT (aktive Reservierung)" kennzeichnet: erwähne das höchstens informativ (z.B. als Beleg für hohe Auslastung), aber schlage NIEMALS eine CLEAR_DATE_OVERRIDE- oder sonstige "Sperre aufheben"-Aktion dafür vor — es gibt dort keinen echten Override zum Aufheben, und eine solche Aktion wäre schlicht falsch.
 
 Nur wenn der Kontext unten einen Tag explizit als "MANUELL GESPERRT (echter Override vorhanden)" kennzeichnet — d.h. Preis -1 UND keine aktive Reservierung UND ein bestätigter Eintrag in den tatsächlichen PriceLabs-Overrides —, ist das eine echte, vom Eigentümer gesetzte Sperre. Nur dafür: verwende actionType=CLEAR_DATE_OVERRIDE mit params={dates: ["YYYY-MM-DD", ...]} (alle betroffenen Tage in einem Array), um sie aufzuheben. Verwende dafür NIEMALS DATE_OVERRIDE mit einem erfundenen Ersatzpreis — es gibt keinen "richtigen" Preis, den du für einen gesperrten Tag einsetzen könntest, ohne ihn zu erfinden.
@@ -262,7 +264,8 @@ const STRUCTURED_SUGGESTION_SCHEMA = {
     },
     actions: {
       type: "array",
-      description: "0-3 konkrete, umsetzbare Aktionen.",
+      description:
+        "0-3 konkrete, umsetzbare Aktionen — je ein eigenständiges Thema/Problem, NICHT ein Eintrag pro Tag. Eine Preis-/Mindestaufenthalt-Korrektur über mehrere Tage ist EINE Aktion mit einem overrides-Array (siehe params), auch wenn sie 10+ Tage abdeckt.",
       items: {
         type: "object",
         properties: {
@@ -283,7 +286,7 @@ const STRUCTURED_SUGGESTION_SCHEMA = {
           params: {
             type: "object",
             description:
-              "tool=PRICELABS + actionType=BASE_PRICE_UPDATE: {newBasePrice: number}. actionType=DATE_OVERRIDE: {date: 'YYYY-MM-DD', price: number, minStay?: number}. actionType=CLEAR_DATE_OVERRIDE (hebt eine manuelle Sperre/einen blockierten Tag auf, z.B. Preis -1): {dates: ['YYYY-MM-DD', ...]}. Für MDV_*/OTHER: frei, dient nur der Dokumentation (wird noch nicht automatisch gepusht).",
+              "tool=PRICELABS + actionType=BASE_PRICE_UPDATE: {newBasePrice: number}. actionType=DATE_OVERRIDE, EIN Tag: {date: 'YYYY-MM-DD', price: number, minStay?: number}. actionType=DATE_OVERRIDE, MEHRERE Tage in einer Aktion (z.B. eine ganze unterpreiste Range): {overrides: [{date: 'YYYY-MM-DD', price: number, minStay?: number}, ...]} — ein Eintrag pro betroffenem Tag, jeweils mit dem für diesen Tag exakten Wert. actionType=CLEAR_DATE_OVERRIDE (hebt eine manuelle Sperre/einen blockierten Tag auf, z.B. Preis -1): {dates: ['YYYY-MM-DD', ...]}. Für MDV_*/OTHER: frei, dient nur der Dokumentation (wird noch nicht automatisch gepusht).",
             additionalProperties: true,
           },
           expectedImpact: { type: "string", description: "Erwartete Wirkung auf Auslastung/ADR/Netto-Profitabilität." },

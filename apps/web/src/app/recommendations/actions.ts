@@ -252,15 +252,42 @@ async function executeSuggestionAction(
       await client.updateListingBasePrice(listingId, pms, newBasePrice);
       auditPayload = { listingId, pms, newBasePrice };
     } else if (action.actionType === "DATE_OVERRIDE") {
-      const date = String(params.date ?? "");
-      const price = Number(params.price);
-      const minStay = params.minStay != null ? Number(params.minStay) : undefined;
-      if (!date || !Number.isFinite(price)) throw new Error("Aktion hat kein gültiges date/price für den Override.");
+      // Supports both a single-day override ({date, price, minStay}) and a
+      // batch of several days in one action ({overrides: [{date, price,
+      // minStay}, ...]}). A multi-day price correction (e.g. "Aug 10-19 are
+      // all underpriced vs. PriceLabs — raise them back up") is genuinely one
+      // coherent action, not N separate ones — but the structuring step's
+      // schema/prompt only ever described the single-date shape, and forcing
+      // one DATE_OVERRIDE action per day blew past the 3-4 action budget. The
+      // model's apparent response was to drop the whole actions array rather
+      // than violate the budget (confirmed for "The R Apartment Froburg"
+      // 2026-08-08: a clear "raise Aug 10-19 to PriceLabs level" recommendation
+      // in the summary text, zero actions emitted). setDateOverrides already
+      // accepts an array and pushes it in a single PriceLabs call, so this
+      // batches through exactly the same way a single override does.
+      const rawOverrides = Array.isArray(params.overrides) ? params.overrides : [params];
+      const overridesInput = rawOverrides
+        .map((o) => {
+          const entry = (o && typeof o === "object" ? o : {}) as Record<string, unknown>;
+          return {
+            date: String(entry.date ?? ""),
+            price: Number(entry.price),
+            minStay: entry.minStay != null ? Number(entry.minStay) : undefined,
+          };
+        })
+        .filter((o) => o.date && Number.isFinite(o.price));
+      if (overridesInput.length === 0) throw new Error("Aktion hat kein gültiges date/price für den Override.");
       const currency = await resolveCurrencyForOverride(rec, client, listingId);
-      await client.setDateOverrides(listingId, pms, [
-        { date, price, minStay, currency, reason: "AI-Vorschlag via The R profit management dashboard" },
-      ]);
-      auditPayload = { listingId, pms, date, price, minStay: minStay ?? null, currency };
+      await client.setDateOverrides(
+        listingId,
+        pms,
+        overridesInput.map((o) => ({
+          ...o,
+          currency,
+          reason: "AI-Vorschlag via The R profit management dashboard",
+        }))
+      );
+      auditPayload = { listingId, pms, overrides: overridesInput, currency };
     } else if (action.actionType === "CLEAR_DATE_OVERRIDE") {
       const dates = Array.isArray(params.dates)
         ? params.dates.map((d) => String(d)).filter(Boolean)
