@@ -179,7 +179,12 @@ export default async function DashboardPage() {
     const hasStructuredSuggestion = structured != null && Array.isArray(structured.actions);
 
     if (hasStructuredSuggestion) {
-      const pendingAutomatable = structured!.actions.filter((a) => a.automatable && a.status === "PENDING");
+      // Include FAILED alongside PENDING — a FAILED action is retryable (see
+      // executeSuggestionAction), so "Alle X pushen" must count and offer to
+      // retry it too, not just the ones that never ran yet.
+      const pendingAutomatable = structured!.actions.filter(
+        (a) => a.automatable && (a.status === "PENDING" || a.status === "FAILED")
+      );
 
       return (
         <Card key={rec.id} variant="accent" className="mt-3 animate-fade-in-up p-4">

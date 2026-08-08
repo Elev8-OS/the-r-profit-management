@@ -219,7 +219,12 @@ async function executeSuggestionAction(
       "Diese Aktion ist noch nicht automatisch pushbar (MyDataValue-Schreibzugriff ist noch nicht angebunden — siehe packages/integrations/src/mdv/client.ts)."
     );
   }
-  if (action.status !== "PENDING") throw new Error("Diese Aktion wurde bereits entschieden.");
+  // A FAILED action must be retryable, not permanently stuck — otherwise a
+  // transient/now-fixed problem (e.g. the missing-currency bug fixed
+  // 2026-08-08) leaves the action, and therefore its whole recommendation,
+  // wedged in the pending list forever with a "retry" button that can never
+  // actually succeed. Only a genuinely SENT action is truly done.
+  if (action.status === "SENT") throw new Error("Diese Aktion wurde bereits erfolgreich gepusht.");
 
   const { listingId, pms } = getPriceLabsRef(rec);
   const client = getPriceLabsClient();
@@ -343,7 +348,12 @@ export async function pushAllAiSuggestionActions(recommendationId: string): Prom
   if (rec.status !== "PENDING") return { ok: false, error: "This recommendation has already been fully decided" };
 
   const proposed = rec.proposedAction as unknown as SuggestionProposedAction;
-  const pendingAutomatable = (proposed.actions ?? []).filter((a) => a.automatable && a.status === "PENDING");
+  // Retry FAILED actions too, not just PENDING ones — same reasoning as
+  // executeSuggestionAction's guard above, otherwise "Alle Aktionen pushen"
+  // silently skips exactly the actions a fixed bug would now let through.
+  const pendingAutomatable = (proposed.actions ?? []).filter(
+    (a) => a.automatable && (a.status === "PENDING" || a.status === "FAILED")
+  );
   if (pendingAutomatable.length === 0) {
     return { ok: false, error: "Keine automatisch pushbaren Aktionen offen für diesen Vorschlag." };
   }
