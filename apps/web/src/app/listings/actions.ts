@@ -161,7 +161,7 @@ Wenn eine sinnvolle Aktion keine ausreichende Zahlengrundlage in den Rohdaten ha
 
 Setze dependencyNote bei jeder Aktion explizit: ob sie unabhängig von den anderen vorgeschlagenen Aktionen sinnvoll ist, oder nur in Kombination mit einer/mehreren anderen (dann welche/r).
 
-Gib 0-4 Aktionen zurück; ein leeres actions-Array ist korrekt, wenn keine konkrete Aktion gerechtfertigt ist (z.B. reine Beobachtungsempfehlung) — aber NICHT, wenn du im Rohdaten-Kontext bereits eine konkrete blockierte Sperre oder eine über der Empfehlung liegende manuelle Preisüberschreibung siehst; das sind fast immer konkret umsetzbare Aktionen (CLEAR_DATE_OVERRIDE bzw. DATE_OVERRIDE).
+Gib 0-4 Aktionen zurück; ein leeres actions-Array ist korrekt, wenn keine konkrete Aktion gerechtfertigt ist (z.B. reine Beobachtungsempfehlung) — aber NICHT, wenn du im Rohdaten-Kontext bereits eines der folgenden siehst, denn das sind fast immer konkret umsetzbare Aktionen (CLEAR_DATE_OVERRIDE bzw. DATE_OVERRIDE): (a) eine konkrete blockierte Sperre; (b) eine manuelle Preisüberschreibung, die von der PriceLabs-Empfehlung abweicht — UNTER der Empfehlung (verschenkte Marge/Umsatz, ökonomisch genauso ein Problem) GENAUSO wie über der Empfehlung (Buchungsrisiko) — behandle BEIDE Richtungen gleich als Handlungsbedarf, nicht nur die teurere Richtung; (c) einen Mindestaufenthalt, der bei schwacher/normaler Nachfrage höher gesetzt ist als nötig (eine Buchungsbarriere) — auch das ist eine konkrete DATE_OVERRIDE-Aktion (minStay senken), keine reine Beobachtung.
 
 ${LANGUAGE_RULE}`;
 
