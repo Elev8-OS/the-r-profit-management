@@ -1,5 +1,14 @@
 import Link from "next/link";
 import { prisma } from "@the-r/db";
+import {
+  Gauge,
+  AlertTriangle,
+  ListChecks,
+  Wallet,
+  Sparkles,
+  ChevronRight,
+  CheckCircle2,
+} from "lucide-react";
 import { requireSession } from "@/lib/auth-helpers";
 import {
   pushAcceptNudge,
@@ -11,6 +20,12 @@ import {
 import { updateListingGoal, generateAiSuggestion } from "../listings/actions";
 import { SubmitButton } from "@/components/SubmitButton";
 import { ConfirmActionButton } from "@/components/ConfirmActionButton";
+import { Card } from "@/components/ui/Card";
+import { Badge } from "@/components/ui/Badge";
+import { StatTile } from "@/components/ui/StatTile";
+import { PageHeader } from "@/components/ui/PageHeader";
+import { buttonClass } from "@/components/ui/buttonStyles";
+import { cn } from "@/components/ui/cn";
 
 const TOOL_LABELS: Record<string, string> = {
   PRICELABS: "PriceLabs",
@@ -53,10 +68,10 @@ const TYPE_LABELS: Record<string, string> = {
 const PUSHABLE_TYPES = new Set(["ACCEPT_NUDGE", "PRICE_OVERRIDE"]);
 
 function scoreBadgeClasses(score: number): string {
-  if (score >= 60) return "bg-brand-yellow text-[#14181f]";
-  if (score >= ATTENTION_THRESHOLD) return "bg-brand-gold/30 text-[#14181f]";
-  if (score > 0) return "bg-[#f7f7f8] text-[#6b7280] border border-[#e5e7eb]";
-  return "bg-white text-[#6b7280] border border-[#e5e7eb]";
+  if (score >= 60) return "bg-gradient-gold text-ink-900 shadow-glow-gold animate-pulse-glow";
+  if (score >= ATTENTION_THRESHOLD) return "bg-brand-gold/25 text-[#5c4a15] border border-brand-gold/40";
+  if (score > 0) return "bg-surface-sunken text-ink-500 border border-line";
+  return "bg-white text-ink-500 border border-line";
 }
 
 function formatChf(amount: number): string {
@@ -167,53 +182,54 @@ export default async function DashboardPage() {
       const pendingAutomatable = structured!.actions.filter((a) => a.automatable && a.status === "PENDING");
 
       return (
-        <div key={rec.id} className="mt-3 rounded-lg border border-[#e5e7eb] bg-[#fffdf7] p-4">
-          <span className="inline-block rounded-md bg-brand-gold/20 px-2 py-0.5 text-xs font-medium text-[#8a6d1f]">
+        <Card key={rec.id} variant="accent" className="mt-3 animate-fade-in-up p-4">
+          <Badge variant="gold" icon={<Sparkles className="h-3 w-3" />}>
             {TYPE_LABELS[rec.type] ?? rec.type}
-          </span>
-          <p className="mt-2 text-sm text-[#14181f]">{structured!.summary}</p>
+          </Badge>
+          <p className="mt-2 text-sm text-ink-900">{structured!.summary}</p>
 
           {Array.isArray(structured!.signals) && structured!.signals.length > 0 && (
-            <ul className="mt-2 list-disc space-y-1 pl-5 text-xs text-[#6b7280]">
+            <ul className="mt-2 list-disc space-y-1 pl-5 text-xs text-ink-500">
               {structured!.signals.map((s, i) => (
                 <li key={i}>
-                  <span className="font-medium text-[#14181f]">{s.source}:</span> {s.text}
+                  <span className="font-medium text-ink-900">{s.source}:</span> {s.text}
                 </li>
               ))}
             </ul>
           )}
 
           {structured!.actions.map((a) => (
-            <div key={a.index} className="mt-3 rounded-md border border-[#e5e7eb] bg-white p-3">
+            <div key={a.index} className="mt-3 rounded-md border border-line bg-white p-3 shadow-card">
               <div className="flex items-start justify-between gap-2">
                 <div>
-                  <div className="text-sm font-medium text-[#14181f]">{a.title}</div>
-                  <p className="mt-1 text-xs text-[#6b7280]">{a.description}</p>
-                  <p className="mt-1 text-xs text-[#6b7280]">Erwartete Wirkung: {a.expectedImpact}</p>
+                  <div className="text-sm font-medium text-ink-900">{a.title}</div>
+                  <p className="mt-1 text-xs text-ink-500">{a.description}</p>
+                  <p className="mt-1 text-xs text-ink-500">Erwartete Wirkung: {a.expectedImpact}</p>
                 </div>
-                <span className="shrink-0 rounded-md bg-[#f7f7f8] px-2 py-0.5 text-[10px] font-medium text-[#6b7280]">
+                <Badge variant="neutral" className="shrink-0">
                   {TOOL_LABELS[a.tool] ?? a.tool}
-                </span>
+                </Badge>
               </div>
               <div className="mt-2">
                 {a.automatable ? (
                   a.status === "SENT" ? (
-                    <span className="text-xs font-medium text-[#8a6d1f]">Übernommen ✓</span>
+                    <span className="inline-flex items-center gap-1 text-xs font-medium text-[#8a6d1f]">
+                      <CheckCircle2 className="h-3.5 w-3.5" /> Übernommen
+                    </span>
                   ) : (
                     <ConfirmActionButton
                       run={pushAiSuggestionAction.bind(null, rec.id, a.index)}
                       label={a.status === "FAILED" ? "Erneut versuchen" : `Bei ${TOOL_LABELS[a.tool] ?? a.tool} pushen`}
                       pendingLabel="Wird gepusht…"
                       dependencyNote={a.dependencyNote}
-                      className={
-                        a.status === "FAILED"
-                          ? "rounded-md border border-red-300 bg-red-50 px-3 py-1.5 text-xs font-medium text-red-800 hover:bg-red-100"
-                          : "rounded-md bg-brand-yellow px-3 py-1.5 text-xs font-medium text-[#14181f] hover:bg-brand-active"
-                      }
+                      className={buttonClass({
+                        variant: a.status === "FAILED" ? "danger" : "primary",
+                        size: "sm",
+                      })}
                     />
                   )
                 ) : (
-                  <span className="text-xs text-[#6b7280]">
+                  <span className="text-xs text-ink-500">
                     Noch nicht automatisierbar ({TOOL_LABELS[a.tool] ?? a.tool}) — manuell umsetzen.
                   </span>
                 )}
@@ -222,7 +238,7 @@ export default async function DashboardPage() {
           ))}
 
           {structured!.confidenceNote && (
-            <p className="mt-2 text-xs italic text-[#9ca3af]">Konfidenz: {structured!.confidenceNote}</p>
+            <p className="mt-2 text-xs italic text-ink-300">Konfidenz: {structured!.confidenceNote}</p>
           )}
 
           <div className="mt-3 flex flex-wrap items-center gap-3">
@@ -232,33 +248,28 @@ export default async function DashboardPage() {
                 label={`Alle ${pendingAutomatable.length} automatisierbaren Aktionen pushen`}
                 pendingLabel="Wird gepusht…"
                 dependencyNote="Führt alle offenen, automatisierbaren Aktionen dieses Vorschlags nacheinander aus — nicht nur eine davon."
-                className="rounded-md border border-brand-gold bg-white px-3 py-1.5 text-xs font-medium text-[#14181f] hover:bg-brand-gold/10"
+                className={buttonClass({ variant: "secondary", size: "sm", className: "border-brand-gold" })}
               />
             )}
             <form action={rejectRecommendation.bind(null, rec.id)}>
-              <button
-                type="submit"
-                className="rounded-md border border-[#e5e7eb] px-4 py-2 text-sm font-medium text-[#6b7280] transition-colors hover:bg-[#f7f7f8]"
-              >
+              <button type="submit" className={buttonClass({ variant: "ghost", size: "md" })}>
                 Ablehnen
               </button>
             </form>
           </div>
-        </div>
+        </Card>
       );
     }
 
     return (
-      <div key={rec.id} className="mt-3 rounded-lg border border-[#e5e7eb] bg-[#fffdf7] p-4">
-        <span className="inline-block rounded-md bg-brand-gold/20 px-2 py-0.5 text-xs font-medium text-[#8a6d1f]">
-          {TYPE_LABELS[rec.type] ?? rec.type}
-        </span>
-        <p className="mt-2 text-sm text-[#14181f]">{rec.rationaleText}</p>
+      <Card key={rec.id} variant="accent" className="mt-3 animate-fade-in-up p-4">
+        <Badge variant="gold">{TYPE_LABELS[rec.type] ?? rec.type}</Badge>
+        <p className="mt-2 text-sm text-ink-900">{rec.rationaleText}</p>
 
         {affectedBooking && (
-          <div className="mt-3 rounded-md border border-[#e5e7eb] bg-white p-3 text-xs text-[#14181f]">
+          <div className="mt-3 rounded-md border border-line bg-white p-3 text-xs text-ink-900 shadow-card">
             <div className="font-medium">Betroffene Buchung</div>
-            <div className="mt-1 text-[#6b7280]">
+            <div className="mt-1 text-ink-500">
               {affectedBooking.checkIn} → {affectedBooking.checkOut} ({affectedBooking.nights} Nächte) ·{" "}
               {affectedBooking.guestName} · {affectedBooking.channel} · {affectedBooking.totalAmount}{" "}
               {affectedBooking.currency}
@@ -271,10 +282,7 @@ export default async function DashboardPage() {
         <div className="mt-3 flex flex-wrap items-center gap-3">
           {rec.type === "ACCEPT_NUDGE" && (
             <form action={pushAcceptNudge.bind(null, rec.id)}>
-              <button
-                type="submit"
-                className="rounded-md bg-brand-yellow px-4 py-2 text-sm font-medium text-[#14181f] transition-colors hover:bg-brand-active"
-              >
+              <button type="submit" className={buttonClass()}>
                 Jetzt bei PriceLabs übernehmen
               </button>
             </form>
@@ -287,7 +295,7 @@ export default async function DashboardPage() {
                 type="date"
                 required
                 defaultValue={affectedBooking?.checkIn}
-                className="rounded-md border border-[#e5e7eb] px-3 py-2 text-sm focus:border-brand-active focus:outline-none"
+                className="rounded-md border border-line px-3 py-2 text-sm focus:border-brand-active focus:outline-none"
               />
               <input
                 name="price"
@@ -296,19 +304,16 @@ export default async function DashboardPage() {
                 min="0"
                 placeholder="Korrigierter Preis"
                 required
-                className="w-40 rounded-md border border-[#e5e7eb] px-3 py-2 text-sm focus:border-brand-active focus:outline-none"
+                className="w-40 rounded-md border border-line px-3 py-2 text-sm focus:border-brand-active focus:outline-none"
               />
-              <button
-                type="submit"
-                className="rounded-md bg-brand-yellow px-4 py-2 text-sm font-medium text-[#14181f] transition-colors hover:bg-brand-active"
-              >
+              <button type="submit" className={buttonClass()}>
                 Override pushen
               </button>
             </form>
           )}
 
           {!PUSHABLE_TYPES.has(rec.type) && (
-            <span className="text-xs text-[#6b7280]">
+            <span className="text-xs text-ink-500">
               {rec.type === "AI_SUGGESTION"
                 ? "Freitext-Vorschlag — keine direkte Push-Aktion."
                 : "Direktes Pushen für diesen Typ ist noch nicht angebunden."}
@@ -316,15 +321,12 @@ export default async function DashboardPage() {
           )}
 
           <form action={rejectRecommendation.bind(null, rec.id)}>
-            <button
-              type="submit"
-              className="rounded-md border border-[#e5e7eb] px-4 py-2 text-sm font-medium text-[#6b7280] transition-colors hover:bg-[#f7f7f8]"
-            >
+            <button type="submit" className={buttonClass({ variant: "ghost" })}>
               Ablehnen
             </button>
           </form>
         </div>
-      </div>
+      </Card>
     );
   }
 
@@ -348,24 +350,24 @@ export default async function DashboardPage() {
     const topDrivers = drivers.slice(0, 3);
 
     return (
-      <div key={listing.id} className="p-4">
+      <div key={listing.id} className="p-4 transition-colors hover:bg-surface-sunken/60">
         <div className="flex items-start justify-between gap-4">
           <div>
-            <Link href={`/listings/${listing.id}`} className="font-medium text-[#14181f] hover:underline">
+            <Link href={`/listings/${listing.id}`} className="font-medium text-ink-900 hover:text-brand-gold hover:underline">
               {listing.displayName}
             </Link>
-            <div className="text-sm text-[#6b7280]">
+            <div className="text-sm text-ink-500">
               {[listing.brand, listing.city, listing.country].filter(Boolean).join(" · ") || "—"}
             </div>
           </div>
           {snapshot && (
             <div className="flex shrink-0 items-center gap-3">
               {snapshot.estimatedMonthlyLeakageChf != null && Number(snapshot.estimatedMonthlyLeakageChf) > 0 && (
-                <span className="text-sm text-[#6b7280]">
+                <span className="text-sm text-ink-500">
                   ~{formatChf(Number(snapshot.estimatedMonthlyLeakageChf))}/Monat
                 </span>
               )}
-              <span className={"rounded-lg px-3 py-1 text-sm font-semibold " + scoreBadgeClasses(snapshot.score)}>
+              <span className={cn("rounded-lg px-3 py-1 text-sm font-semibold", scoreBadgeClasses(snapshot.score))}>
                 {snapshot.score}
               </span>
             </div>
@@ -373,7 +375,7 @@ export default async function DashboardPage() {
         </div>
 
         {topDrivers.length > 0 ? (
-          <div className="mt-2 space-y-1 text-sm text-[#6b7280]">
+          <div className="mt-2 space-y-1 text-sm text-ink-500">
             {topDrivers.map((d, i) => (
               <p key={i}>
                 {d.detail} {d.actionSuggestion}
@@ -381,17 +383,17 @@ export default async function DashboardPage() {
             ))}
           </div>
         ) : snapshot ? (
-          <p className="mt-2 text-sm text-[#6b7280]">
+          <p className="mt-2 text-sm text-ink-500">
             Keine auffälligen Signale — dieses Listing läuft im Rahmen der verfügbaren Daten unauffällig.
           </p>
         ) : null}
 
         {recs.map((rec) => renderRecommendationCard(rec))}
 
-        <details className="mt-3 rounded-lg border border-[#e5e7eb] bg-white p-3 text-sm">
-          <summary className="cursor-pointer font-medium text-[#14181f]">
+        <details className="mt-3 rounded-lg border border-line bg-white p-3 text-sm shadow-card">
+          <summary className="cursor-pointer font-medium text-ink-900">
             Ziel für diese Einheit & KI-Vorschlag
-            {listing.goalNotes && <span className="ml-2 font-normal text-[#6b7280]">(Ziel hinterlegt)</span>}
+            {listing.goalNotes && <span className="ml-2 font-normal text-ink-500">(Ziel hinterlegt)</span>}
           </summary>
           <form action={updateListingGoal.bind(null, listing.id)} className="mt-3 space-y-2">
             <textarea
@@ -399,12 +401,9 @@ export default async function DashboardPage() {
               rows={2}
               placeholder="z.B. 'Auslastung im Q4 maximieren' oder 'Marge schützen, keine Last-Minute-Rabatte'"
               defaultValue={listing.goalNotes ?? ""}
-              className="w-full rounded-md border border-[#e5e7eb] px-3 py-2 text-sm focus:border-brand-active focus:outline-none"
+              className="w-full rounded-md border border-line px-3 py-2 text-sm focus:border-brand-active focus:outline-none"
             />
-            <button
-              type="submit"
-              className="rounded-md border border-[#e5e7eb] px-3 py-1.5 text-xs font-medium text-[#14181f] hover:bg-[#f7f7f8]"
-            >
+            <button type="submit" className={buttonClass({ variant: "secondary", size: "sm" })}>
               Ziel speichern
             </button>
           </form>
@@ -412,11 +411,11 @@ export default async function DashboardPage() {
             <form action={generateAiSuggestion.bind(null, listing.id)} className="mt-2">
               <SubmitButton
                 pendingLabel="Wird generiert… (bis zu 30s, inkl. Websuche)"
-                className="rounded-md bg-brand-yellow px-3 py-1.5 text-xs font-medium text-[#14181f] hover:bg-brand-active disabled:cursor-wait disabled:opacity-60"
+                className={buttonClass({ size: "sm", className: "disabled:cursor-wait" })}
               >
                 Neuen KI-Vorschlag generieren
               </SubmitButton>
-              <span className="ml-2 text-xs text-[#6b7280]">Nutzt das gespeicherte Ziel + aktuelle Daten.</span>
+              <span className="ml-2 text-xs text-ink-500">Nutzt das gespeicherte Ziel + aktuelle Daten.</span>
             </form>
           ) : (
             <div className="mt-2">
@@ -424,11 +423,11 @@ export default async function DashboardPage() {
                 type="button"
                 disabled
                 title="ANTHROPIC_API_KEY ist auf web-app noch nicht gesetzt"
-                className="cursor-not-allowed rounded-md bg-[#f0f0f0] px-3 py-1.5 text-xs font-medium text-[#9ca3af]"
+                className="cursor-not-allowed rounded-md bg-ink-900/5 px-3 py-1.5 text-xs font-medium text-ink-300"
               >
                 Neuen KI-Vorschlag generieren
               </button>
-              <span className="ml-2 text-xs text-[#6b7280]">
+              <span className="ml-2 text-xs text-ink-500">
                 Noch nicht aktiv — ANTHROPIC_API_KEY fehlt auf web-app.
               </span>
             </div>
@@ -439,93 +438,90 @@ export default async function DashboardPage() {
   }
 
   return (
-    <main className="mx-auto max-w-6xl px-6 py-12">
-      <h1 className="text-xl font-semibold text-[#14181f]">Dashboard & Empfehlungen</h1>
-      <p className="mt-2 text-[#6b7280]">
-        Der Opportunity Score fasst pro Listing zusammen, was gerade den Profit einschränkt. Offene
-        Empfehlungen erscheinen direkt bei ihrem Listing — jede erklärt, was auffällt und warum;
-        nichts wird automatisch verändert. Ein Klick auf einen Push-Button schreibt sofort live beim
-        jeweiligen System; das ist nicht rückgängig zu machen, außer durch eine weitere manuelle Änderung.
-      </p>
+    <main className="mx-auto max-w-6xl px-6 py-10 sm:px-8">
+      <PageHeader
+        eyebrow="The R — Profit Management"
+        title="Dashboard & Empfehlungen"
+        description="Der Opportunity Score fasst pro Listing zusammen, was gerade den Profit einschränkt. Offene Empfehlungen erscheinen direkt bei ihrem Listing — jede erklärt, was auffällt und warum; nichts wird automatisch verändert. Ein Klick auf einen Push-Button schreibt sofort live beim jeweiligen System; das ist nicht rückgängig zu machen, außer durch eine weitere manuelle Änderung."
+      />
 
-      <p className="mt-3 rounded-md border border-[#e5e7eb] bg-white p-3 text-xs text-[#6b7280]">
-        Hinweis: Formel-Version v1. Die Kosten-Prüfung liefert noch keine echten Ergebnisse, da Rate
-        Cards unter /settings/rate-cards noch nicht befüllt sind. FX-Kurse sind ein manueller
-        Platzhalter (kein Live-Feed). MyDataValue-Live-Sync ist noch nicht angebunden (siehe unten).
-      </p>
+      <Card className="flex items-start gap-2 p-3 text-xs text-ink-500">
+        <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0 text-warning" />
+        <span>
+          Hinweis: Formel-Version v1. Die Kosten-Prüfung liefert noch keine echten Ergebnisse, da Rate Cards
+          unter /settings/rate-cards noch nicht befüllt sind. FX-Kurse sind ein manueller Platzhalter (kein
+          Live-Feed). MyDataValue-Live-Sync ist noch nicht angebunden (siehe unten).
+        </span>
+      </Card>
 
-      <div className="mt-6 grid grid-cols-4 gap-4">
-        <div className="rounded-lg border border-[#e5e7eb] bg-white p-4">
-          <div className="text-2xl font-semibold text-[#14181f]">{scored.length}</div>
-          <div className="text-sm text-[#6b7280]">Listings mit Opportunity Score</div>
-        </div>
-        <div className="rounded-lg border border-[#e5e7eb] bg-white p-4">
-          <div className="text-2xl font-semibold text-[#14181f]">{flaggedCount}</div>
-          <div className="text-sm text-[#6b7280]">davon mit Score &gt; {ATTENTION_THRESHOLD}</div>
-        </div>
-        <div className="rounded-lg border border-[#e5e7eb] bg-white p-4">
-          <div className="text-2xl font-semibold text-[#14181f]">{pendingRecs.length}</div>
-          <div className="text-sm text-[#6b7280]">offene Empfehlungen</div>
-        </div>
-        <div className="rounded-lg border border-[#e5e7eb] bg-white p-4">
-          <div className="text-2xl font-semibold text-[#14181f]">{formatChf(totalLeakage)}</div>
-          <div className="text-sm text-[#6b7280]">geschätzter Profit-Verlust/Monat</div>
-        </div>
+      <div className="mt-6 grid grid-cols-2 gap-4 lg:grid-cols-4">
+        <StatTile label="Listings mit Score" value={String(scored.length)} icon={<Gauge className="h-4 w-4" />} />
+        <StatTile
+          label={`Score > ${ATTENTION_THRESHOLD}`}
+          value={String(flaggedCount)}
+          icon={<AlertTriangle className="h-4 w-4" />}
+          accent={flaggedCount > 0}
+        />
+        <StatTile
+          label="Offene Empfehlungen"
+          value={String(pendingRecs.length)}
+          icon={<ListChecks className="h-4 w-4" />}
+        />
+        <StatTile
+          label="Profit-Verlust/Monat (geschätzt)"
+          value={formatChf(totalLeakage)}
+          icon={<Wallet className="h-4 w-4" />}
+        />
       </div>
 
-      <h2 className="mt-10 font-medium text-[#14181f]">Listings nach Opportunity Score</h2>
-      <div className="mt-3 divide-y divide-[#e5e7eb] rounded-lg border border-[#e5e7eb] bg-white">
+      <h2 className="mt-10 flex items-center gap-1.5 font-medium text-ink-900">
+        Listings nach Opportunity Score
+        <ChevronRight className="h-4 w-4 text-ink-300" />
+      </h2>
+      <Card className="mt-3 divide-y divide-line">
         {scored.length === 0 && (
-          <p className="p-4 text-sm text-[#6b7280]">
+          <p className="p-4 text-sm text-ink-500">
             Noch keine Opportunity-Score-Snapshots vorhanden — Seed-Skript seed:opportunity-signals
             ausführen.
           </p>
         )}
         {scored.map((m) => renderListingRow(m))}
-      </div>
+      </Card>
 
       {unscored.length > 0 && (
         <>
-          <h2 className="mt-10 font-medium text-[#14181f]">Noch ohne Opportunity Score</h2>
-          <p className="text-sm text-[#6b7280]">
+          <h2 className="mt-10 font-medium text-ink-900">Noch ohne Opportunity Score</h2>
+          <p className="text-sm text-ink-500">
             Für diese Listings liegt noch kein Signal aus PriceLabs, MyDataValue oder Elev8 vor.
           </p>
-          <div className="mt-3 divide-y divide-[#e5e7eb] rounded-lg border border-[#e5e7eb] bg-white">
-            {unscored.map((m) => renderListingRow(m))}
-          </div>
+          <Card className="mt-3 divide-y divide-line">{unscored.map((m) => renderListingRow(m))}</Card>
         </>
       )}
 
       {decidedRecent.length > 0 && (
         <>
-          <h2 className="mt-10 font-medium text-[#14181f]">Zuletzt entschieden</h2>
-          <div className="mt-3 divide-y divide-[#e5e7eb] rounded-lg border border-[#e5e7eb] bg-white">
+          <h2 className="mt-10 font-medium text-ink-900">Zuletzt entschieden</h2>
+          <Card className="mt-3 divide-y divide-line">
             {decidedRecent.map((rec) => {
               const latestAudit = rec.auditLog[0]?.payloadSnapshot as Record<string, unknown> | null;
               return (
                 <div key={rec.id} className="flex items-center justify-between gap-3 p-3 text-sm">
                   <div>
-                    <div className="text-[#14181f]">
+                    <div className="text-ink-900">
                       {rec.internalListing.displayName} — {TYPE_LABELS[rec.type] ?? rec.type}
                     </div>
-                    <div className="text-xs text-[#6b7280]">{describeDecision(rec, latestAudit)}</div>
+                    <div className="text-xs text-ink-500">{describeDecision(rec, latestAudit)}</div>
                   </div>
-                  <span
-                    className={
-                      "shrink-0 rounded-md px-2 py-0.5 text-xs font-medium " +
-                      (rec.status === "SENT"
-                        ? "bg-brand-gold/20 text-[#8a6d1f]"
-                        : rec.status === "FAILED"
-                          ? "bg-red-100 text-red-800"
-                          : "bg-[#f7f7f8] text-[#6b7280]")
-                    }
+                  <Badge
+                    variant={rec.status === "SENT" ? "gold" : rec.status === "FAILED" ? "danger" : "neutral"}
+                    className="shrink-0"
                   >
                     {rec.status}
-                  </span>
+                  </Badge>
                 </div>
               );
             })}
-          </div>
+          </Card>
         </>
       )}
     </main>
